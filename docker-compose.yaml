@@ -1,0 +1,51 @@
+services:
+  postgres:
+    image: postgres:14.4-alpine
+    volumes:
+      - ${DATA_DIR}/postgres:/var/lib/postgresql/data/pgdata
+    env_file: .env
+    environment:
+      POSTGRES_DB: test
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  bot:
+    build: .
+    volumes:
+      - ${DATA_DIR}/telegram-bot-api:/var/lib/telegram-bot-api
+      - ${DATA_DIR}:/usr/src/app/${DATA_DIR}
+
+  clean_orders_queue:
+    build: .
+    command: python -u -m tasks.clean_orders_queue
+    volumes:
+      - ${DATA_DIR}:/usr/src/app/${DATA_DIR}
+
+  build_worker:
+    build: .
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DATA_DIR}:/usr/src/app/${DATA_DIR}
+    environment:
+      TMP_DIR_ABSPATH_ON_HOST: "${PWD}/${TMP_DIR}"
+    command: python -u -m tasks.build_worker
+
+  migrations:
+    build: .
+    command: alembic upgrade head
+
+  tests:
+    build: .
+    command: pytest tests/
+
+  tg_bot_api:
+    image: aiogram/telegram-bot-api:7.2
+    env_file: .env
+    environment:
+      TELEGRAM_LOCAL: 1
+    volumes:
+      - ${DATA_DIR}/telegram-bot-api:/var/lib/telegram-bot-api
+    ports:
+      - "8081:8081"
+      - "8082:8082"

@@ -1,0 +1,156 @@
+from typing import Iterator, Optional
+
+import sqlalchemy as sa
+from sqlalchemy.engine import Engine
+
+from models import Order, User
+from schemas.order_status import OrderStatus
+
+
+class UsersCRUD:
+    def __init__(self, engine: Engine):
+        self.engine = engine
+
+    def save(self, user_id) -> int:
+        with self.engine.connect() as con:
+            result = con.execute(sa.insert(User).values({User.id: user_id}))
+            return result.lastrowid
+
+    def get(self, user_id: int) -> Optional[User]:
+        with self.engine.connect() as con:
+            user = con.execute(
+                sa.select(*User.__table__.c).where(User.id == user_id)
+            ).fetchone()
+
+        if user:
+            return User(**user)
+
+
+class OrdersCRUD:
+    def __init__(self, engine: Engine):
+        self.engine = engine
+
+    def create_order(self, user_id: int) -> int:
+        with self.engine.connect() as con:
+            result = con.execute(sa.insert(Order).values({Order.user_id: user_id}))
+            return result.lastrowid
+
+    def update_appid(
+        self,
+        order_id: int,
+        app_id: str,
+    ):
+        with self.engine.connect() as con:
+            result = con.execute(
+                sa.update(Order)
+                .values({Order.app_id: app_id})
+                .where(Order.id == order_id)
+            )
+            return result.lastrowid
+
+    def update_appname(
+        self,
+        order_id: int,
+        appname: str,
+    ):
+        with self.engine.connect() as con:
+            result = con.execute(
+                sa.update(Order)
+                .values({Order.app_name: appname})
+                .where(Order.id == order_id)
+            )
+            return result.lastrowid
+
+    def update_appicon(
+        self,
+        order_id: int,
+        appicon: str,
+    ):
+        with self.engine.connect() as con:
+            result = con.execute(
+                sa.update(Order)
+                .values({Order.app_icon: appicon})
+                .where(Order.id == order_id)
+            )
+            return result.lastrowid
+
+    def update(
+        self,
+        order_id: int,
+        order: Order,
+    ):
+        with self.engine.connect() as con:
+            result = con.execute(
+                sa.update(Order)
+                .values(
+                    {
+                        Order.app_icon: order.app_icon,
+                        Order.app_name: order.app_name,
+                        Order.app_id: order.app_id,
+                    }
+                )
+                .where(Order.id == order_id)
+            )
+            return result.lastrowid
+
+    def update_order_status(self, order_id: int, status: OrderStatus):
+        with self.engine.connect() as con:
+            con.execute(
+                sa.update(Order)
+                .values(
+                    {
+                        "status": status,
+                    }
+                )
+                .where(Order.id == order_id)
+            )
+
+    def remove_order(self, order_id: int):
+        with self.engine.connect() as con:
+            con.execute(sa.delete(Order).where(Order.id == order_id))
+
+    def get_user_orders(self, user_id: int, status: OrderStatus = None):
+        with self.engine.connect() as con:
+            q = (
+                sa.select(*Order.__table__.c)
+                .where(Order.user_id == user_id)
+                .order_by(Order.record_created.desc())
+                .where(
+                    Order.status.notin_([OrderStatus.canceled, OrderStatus.completed])
+                )
+            )
+            if status:
+                q = q.where(Order.status == status)
+
+            records = con.execute(q).fetchall()
+
+        for record in records:
+            yield Order(**record)
+
+    def get_orders(self, status: OrderStatus = None) -> Iterator[Order]:
+        with self.engine.connect() as con:
+            q = sa.select(*Order.__table__.c).order_by(Order.record_created)
+            if status:
+                q = q.where(Order.status == status)
+
+            records = con.execute(q).fetchall()
+
+        for record in records:
+            yield Order(**record)
+
+
+class OrdersQueue:
+    def __init__(self, engine: Engine):
+        self.engine = engine
+        self.users = UsersCRUD(engine)
+        self.orders = OrdersCRUD(engine)
+
+    def update_order(self, order: Order) -> int:
+        return self.orders.update(order.id, order)
+
+    def get_last_order(self, user_id: int) -> Optional[Order]:
+        for i in self.orders.get_user_orders(user_id):
+            return i
+
+    def get_orders(self, status: OrderStatus = None):
+        return self.orders.get_orders(status)

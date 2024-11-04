@@ -3,7 +3,7 @@ services:
     image: postgres:14.4-alpine
     volumes:
       - ${DATA_DIR}/postgres:/var/lib/postgresql/data/pgdata
-    env_file: .env
+    env_file: .env.postgres
     environment:
       POSTGRES_DB: test
       PGDATA: /var/lib/postgresql/data/pgdata
@@ -11,37 +11,65 @@ services:
       - "127.0.0.1:5432:5432"
 
   bot:
-    build: .
+    build:
+      context: .
+      args:
+        SERVICE_NAME: bot
+    command: python -u -m bot.bot
     volumes:
       - ${DATA_DIR}/telegram-bot-api:/var/lib/telegram-bot-api
       - ${DATA_DIR}:/usr/src/app/${DATA_DIR}
 
   clean_orders_queue:
-    build: .
+    build:
+      context: .
+      args:
+        SERVICE_NAME: clean_orders_queue
     command: python -u -m tasks.clean_orders_queue
     volumes:
       - ${DATA_DIR}:/usr/src/app/${DATA_DIR}
 
   build_worker:
-    build: .
+    build:
+      context: .
+      args:
+        SERVICE_NAME: build_worker
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${DATA_DIR}:/usr/src/app/${DATA_DIR}
     environment:
-      TMP_DIR_ABSPATH_ON_HOST: "${PWD}/${TMP_DIR}"
-    command: python -u -m tasks.build_worker
+      PROJECT_ROOT_ABSPATH_ON_HOST: "${PWD}"
+    command: python -u -m worker.build_worker
+
+  workers_controller:
+    build:
+      context: .
+      args:
+        SERVICE_NAME: workers_controller
+    command: gunicorn -b 0.0.0.0:8000 web.workers_controller:app
+    stop_grace_period: 3m
+    volumes:
+      - ${DATA_DIR}:/usr/src/app/${DATA_DIR}
+    ports:
+      - "127.0.0.1:8000:8000"
 
   migrations:
-    build: .
+    build:
+      context: .
+      args:
+        SERVICE_NAME: migrations
     command: alembic upgrade head
 
   tests:
-    build: .
+    build:
+      context: .
+      args:
+        SERVICE_NAME: tests
     command: pytest tests/
 
   tg_bot_api:
     image: aiogram/telegram-bot-api:7.2
-    env_file: .env
+    env_file: .env.tg_bot_api
     environment:
       TELEGRAM_LOCAL: 1
     volumes:

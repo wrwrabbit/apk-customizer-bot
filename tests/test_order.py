@@ -1,36 +1,25 @@
-from orders import OrdersQueue
+from crud.orders_crud import OrdersCRUD
 from schemas.order_status import OrderStatus
 
 
 def test_create_order(session):
-    queue = OrdersQueue(session)
+    orders = OrdersCRUD(session)
     user_id = int(1e12)
-    order_id = queue.record_user(user_id)
-    queue.orders.update_appname(order_id, "TestApp")
-    queue.orders.update_appid(order_id, "TestApp")
+    order_id = orders.create_order(user_id)
+    orders.update_appname(order_id, "TestApp")
+    orders.update_app_id(order_id, "TestApp")
 
-    orders = list(queue.orders.get_user_orders(user_id))
-    assert len(orders) == 1
-    assert orders[0].app_name == "TestApp"
-    assert orders[0].app_id == "TestApp"
-    assert orders[0].status == OrderStatus.appname
+    order_list = list(orders.get_orders_by_status(OrderStatus.app_name))
 
-    orders = list(queue.orders.get_orders())
+    assert len(order_list) == 1
+    assert order_list[0].status == OrderStatus.app_name
 
-    assert len(orders) == 1
-    assert orders[0].status == OrderStatus.appname
+    order_list = list(orders.get_orders_by_status(OrderStatus.built))
 
-    orders = list(queue.orders.get_orders(OrderStatus.appname))
+    assert len(order_list) == 0
 
-    assert len(orders) == 1
-    assert orders[0].status == OrderStatus.appname
+    orders.update_order_status(order_id, OrderStatus.built)
 
-    orders = list(queue.orders.get_orders(OrderStatus.built))
-
-    assert len(orders) == 0
-
-    queue.orders.update_order_status(order_id, OrderStatus.built)
-
-    orders = list(queue.orders.get_orders(OrderStatus.built))
-    assert len(orders) == 1
-    assert orders[0].status == OrderStatus.built
+    order_list = list(orders.get_orders_by_status(OrderStatus.built))
+    assert len(order_list) == 1
+    assert order_list[0].status == OrderStatus.built

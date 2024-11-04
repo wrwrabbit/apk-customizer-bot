@@ -1,0 +1,6 @@
+PREFIXES = ['com', 'org', 'net', 'us', 'co.uk']
+POSTFIXES = ['app', 'android']
+DELIMITERS = ['', '_']
+
+probability_has_organization = 1
+probability_has_postfix = 1

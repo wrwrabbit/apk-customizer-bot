@@ -1,42 +1,55 @@
-import os
-import shutil
 import time
+from datetime import datetime, timedelta
+
+import pytz
 
 import config
+from crud.user_build_stats_crud import UserBuildStatsCRUD
 from db import engine
-from orders import OrdersQueue
-from schemas.order_status import OrderStatus, STATUSES_IN_PROGRESS
+from crud.orders_crud import OrdersCRUD
+from schemas.order_status import OrderStatus, get_next_status
+from crud.workers_crud import WorkersCRUD
 
 
-def fail_stucked_builds(db: OrdersQueue):
-    # If the bot was stopped during assembly, the order may get stuck.
-    # It's status will be one of STATUSES_IN_PROGRESS. 
-    # So after restart we must set 'failed' status to allow users restart their builds.
-    for status in STATUSES_IN_PROGRESS:
-        for order in db.get_orders(status):
+def fail_stuck_builds(orders: OrdersCRUD):
+    # If the bot was stopped during building, the order may get stuck.
+    # It's status will be one of STATUSES_BUILDING.
+    # So after restart we must reset status to build the order or send the apk again.
+    stuck_statuses = [
+        OrderStatus.build_started,
+        OrderStatus.building,
+        OrderStatus.sending_apk,
+    ]
+    for status in stuck_statuses:
+        for order in orders.get_orders_by_status(status):
             print(f"Cleaning building status for order {order.id}")
-            db.orders.update_order_status(order.id, OrderStatus.failed)
+            orders.update_order_status(order.id, get_next_status(order.status, "repeat"))
 
 
-def clean_orders_queue(db: OrdersQueue):
-    for status in [OrderStatus.canceled, OrderStatus.completed]:
-        for order in db.get_orders(status):
-            print(f"Cleaning data for {order.status} order {order.id}")
+def reset_build_status_for_offline_workers(orders: OrdersCRUD):
+    for order in orders.get_orders_by_status(OrderStatus.building):
+        workers = WorkersCRUD(orders.session)
+        worker = workers.get_worker(order.worker_id)
+        if datetime.now() - worker.last_online_date > timedelta(seconds=config.CONSIDER_WORKER_OFFLINE_AFTER_SEC):
+            print(f"Worker {worker.id} is offline for order {order.id}", datetime.now() - worker.last_online_date)
+            order.status = get_next_status(order.status, "repeat")
+            order.worker_id = None
+            orders.update_order(order)
 
-            build_dir = os.path.join(config.TMP_DIR, str(order.id))
-            if os.path.isdir(build_dir):
-                print(f"Removing directory {build_dir}")
-                shutil.rmtree(build_dir)
 
-            db.orders.remove_order(order.id)
+def delete_old_user_build_stats(user_build_stats_crud: UserBuildStatsCRUD):
+    before_date = (datetime.now() - timedelta(seconds=config.DELETE_USER_BUILD_STATS_AFTER_SEC)).astimezone(pytz.utc)
+    user_build_stats_crud.remove_old_user_build_stats(before_date)
 
 
 def main():
     print("Clean process started")
-    db = OrdersQueue(engine)
-    fail_stucked_builds(db)
+    orders = OrdersCRUD(engine)
+    user_build_stats_crud = UserBuildStatsCRUD(engine)
+    fail_stuck_builds(orders)
     while True:
-        clean_orders_queue(db)
+        reset_build_status_for_offline_workers(orders)
+        delete_old_user_build_stats(user_build_stats_crud)
         time.sleep(1)
 
 

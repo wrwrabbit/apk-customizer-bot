@@ -14,9 +14,16 @@ RUN apt-get update && \
     apt-get install -qy curl && \
     curl -sSL https://get.docker.com/ | sh
 
+RUN apt-get update && \
+    apt-get install -y openjdk-11-jre-headless && \
+    apt-get clean
+
 COPY ./Pipfile* ./
 RUN pipenv install --deploy --system --clear --dev
 
 COPY . .
+
+ARG SERVICE_NAME
+RUN python shrink_env.py "$SERVICE_NAME"
 
 CMD python main.py

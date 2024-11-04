@@ -110,6 +110,9 @@ ENV/
 env.bak/
 venv.bak/
 
+.env.postgres
+.env.tg_bot_api
+
 # Spyder project settings
 .spyderproject
 .spyproject
@@ -138,3 +141,11 @@ data/*
 local_secrets.py
 *.env
 */Partisan-Telegram-Android/*
+*.pem
+
+bot/app_generation_sources/app_templates.py
+bot/app_generation_sources/icons/**/*.png
+bot/app_generation_sources/icons/**/*.jpg
+bot/app_generation_sources/icons/**/*.jpeg
+bot/app_generation_sources/app_id_sources.py
+bot/app_generation_sources/keystore_sources.py

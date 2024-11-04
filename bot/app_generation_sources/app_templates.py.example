@@ -1,0 +1,31 @@
+from bot.app_generation_sources.app_template import AppTemplate
+
+
+ROOT_APP_TEMPLATE = AppTemplate(
+    possible_notifications=[
+        "Update available!"
+    ],
+    inner_templates=[
+        AppTemplate(
+            screen_name="calculator",
+            possible_names=["Calculator"],
+            possible_icons=["icons/calculator/**"]
+        ),
+
+        AppTemplate(
+            screen_name="note",
+            possible_names=["Note"],
+            possible_icons=["icons/note/**"]
+        ),
+
+        AppTemplate(
+            screen_name="loading",
+            inner_templates=[
+                AppTemplate(
+                    possible_names=["A Game"],
+                    possible_icons=["icons/loading/Game.png"]
+                )
+            ]
+        ),
+    ]
+)

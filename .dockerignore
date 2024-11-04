@@ -3,3 +3,7 @@ data
 */__pycache__
 /.pytest_cache
 /.tmp
+.env.tg_bot_api
+README.md
+.git
+.gitignore

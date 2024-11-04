@@ -1,6 +1,9 @@
 import io
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
+import utils
+
+
 def make_screen_example(icon_bytes: bytes, name: str) -> bytes:
     icon_x = 587
     icon_y = 1198
@@ -22,7 +25,7 @@ def make_screen_example(icon_bytes: bytes, name: str) -> bytes:
     icon = Image.open(io.BytesIO(icon_bytes))
 
     screen_copy2 = screen_template.copy()
-    resized_icon = icon.resize((icon_width, icon_width))
+    resized_icon = utils.crop_center_rectangle(icon).resize((icon_width, icon_width))
     screen_copy2.paste(resized_icon, (icon_x, icon_y))
 
     screen_template.paste(screen_copy2, (0, 0), mask=mask_im_blur)
@@ -33,5 +36,5 @@ def make_screen_example(icon_bytes: bytes, name: str) -> bytes:
     screen_draw.text((text_x, text_y), elipsized_name, (255, 255, 255), font=font, anchor='mm')
 
     result_array = io.BytesIO()
-    screen_template.save(result_array, format='png')
+    screen_template.save(result_array, format='JPEG', quality=85)
     return result_array.getvalue()

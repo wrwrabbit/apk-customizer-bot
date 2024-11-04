@@ -13,6 +13,13 @@ aiogram = "*"
 unidecode = "*"
 pillow = "*"
 pytz = "*"
+flask = "*"
+flask-jwt-extended = "*"
+gunicorn = "*"
+names = "*"
+countryinfo = "*"
+pycryptodome = "*"
+argon2-cffi = "*"
 
 [dev-packages]
 pytest = "*"

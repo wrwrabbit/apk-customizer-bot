@@ -1,12 +1,10 @@
-import os
-import subprocess
 from typing import Iterator, Optional
 
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
 from models import Order
-from schemas.order_status import OrderStatus
+from schemas.order_status import OrderStatus, get_next_status
 
 
 class OrdersCRUD:
@@ -19,13 +17,41 @@ class OrdersCRUD:
             .values(
                 {
                     Order.user_id: user_id,
+                    Order.status: get_next_status(None)
                 }
             )
             .returning(Order.id)
         )
         return result.scalar()
 
-    def update_appid(
+    def insert_configured_order(self, user_id: int, order: Order) -> Optional[Order]:
+        result = self.session.execute(
+            sa.insert(Order)
+            .values(
+                {
+                    Order.user_id: user_id,
+                    Order.app_icon: order.app_icon,
+                    Order.app_name: order.app_name,
+                    Order.app_id: order.app_id,
+                    Order.app_version_code: order.app_version_code,
+                    Order.app_version_name: order.app_version_name,
+                    Order.app_notification_icon: order.app_notification_icon,
+                    Order.app_notification_color: order.app_notification_color,
+                    Order.app_masked_passcode_screen: order.app_masked_passcode_screen,
+                    Order.app_notification_text: order.app_notification_text,
+                    Order.permissions: order.permissions,
+                    Order.keystore: order.keystore,
+                    Order.update_tag: order.update_tag,
+
+                    Order.status: OrderStatus.queued,
+                }
+            )
+            .returning(*Order.__table__.c)
+        )
+        row = result.fetchone()
+        return Order(**row) if row else None
+
+    def update_app_id(
         self,
         order_id: int,
         app_id: str,
@@ -54,7 +80,7 @@ class OrdersCRUD:
     def update_appicon(
         self,
         order_id: int,
-        appicon: str,
+        appicon: bytes,
     ) -> int:
         result = self.session.execute(
             sa.update(Order)
@@ -64,9 +90,8 @@ class OrdersCRUD:
         )
         return result.scalar()
 
-    def update(
+    def update_order(
         self,
-        order_id: int,
         order: Order,
     ) -> int:
         result = self.session.execute(
@@ -76,10 +101,20 @@ class OrdersCRUD:
                     Order.app_icon: order.app_icon,
                     Order.app_name: order.app_name,
                     Order.app_id: order.app_id,
+                    Order.app_version_code: order.app_version_code,
+                    Order.app_version_name: order.app_version_name,
+                    Order.app_notification_icon: order.app_notification_icon,
+                    Order.app_notification_color: order.app_notification_color,
+                    Order.app_masked_passcode_screen: order.app_masked_passcode_screen,
+                    Order.app_notification_text: order.app_notification_text,
+                    Order.permissions: order.permissions,
+                    Order.keystore: order.keystore,
                     Order.status: order.status,
+                    Order.worker_id: order.worker_id,
+                    Order.build_attempts: order.build_attempts
                 }
             )
-            .where(Order.id == order_id)
+            .where(Order.id == order.id)
             .returning(Order.id)
         )
         return result.scalar()
@@ -113,25 +148,19 @@ class OrdersCRUD:
     def remove_order(self, order_id: int):
         self.session.execute(sa.delete(Order).where(Order.id == order_id))
 
-    def get_user_orders(self, user_id: int, status: OrderStatus = None):
+    def get_user_order(self, user_id: int, status: OrderStatus = None):
         q = sa.select(*Order.__table__.c).where(Order.user_id == user_id)
         if status:
             q = q.where(Order.status == status)
-        else:
-            q = q.where(Order.status.notin_([OrderStatus.canceled, OrderStatus.completed]))
         q = q.order_by(Order.record_created.desc())
 
-        records = self.session.execute(q).fetchall()
+        record = self.session.execute(q).fetchone()
+        return Order(**record) if record else None
 
-        for record in records:
-            yield Order(**record)
-
-    def get_orders(self, status: OrderStatus = None) -> Iterator[Order]:
+    def get_orders_by_status(self, status: OrderStatus) -> Iterator[Order]:
         q = sa.select(*Order.__table__.c)
         if status:
             q = q.where(Order.status == status)
-        else:
-            q = q.where(Order.status.notin_([OrderStatus.canceled, OrderStatus.completed]))
         q = q.order_by(Order.record_created)
 
         records = self.session.execute(q).fetchall()
@@ -139,46 +168,25 @@ class OrdersCRUD:
         for record in records:
             yield Order(**record)
 
+    def get_worker_order(self, worker_id: int) -> Optional[Order]:
+        q = (sa.select(*Order.__table__.c)
+             .where(Order.worker_id == worker_id))
+        row = self.session.execute(q).fetchone()
+        return Order(**row) if row else None
 
-class OrdersQueue:
-    def __init__(self, session: Session):
-        self.session = session
-        self.orders = OrdersCRUD(session)
-
-    def get_users(self):
-        users = (
-            self.session.execute(
-                sa.select(Order.user_id).where(
-                    Order.status.notin_([OrderStatus.canceled, OrderStatus.completed])
-                )
-            )
-            .scalars()
-            .fetchall()
+    def get_order_queue_position(self, order: Order) -> int:
+        q = sa.select(sa.func.count(Order.id)).where(
+            (Order.status == OrderStatus.queued) &
+           (Order.record_created < order.record_created)
         )
 
-        for user in users:
-            yield user
+        result = self.session.execute(q).scalar() + 1
+        return result
 
-    def record_user(self, userid: int) -> int:
-        result = self.session.execute(
-            sa.insert(Order)
-            .values(
-                {
-                    Order.user_id: userid,
-                    Order.status: OrderStatus.appname,
-                }
-            )
-            .returning(Order.id)
-        )
-        return result.scalar()
+    def order_for_user_exists(self, user_id: int) -> bool:
+        q = (sa.select(sa.func.count(Order.id))
+             .where(Order.user_id == user_id))
+        return self.session.execute(q).scalar() > 0
 
-    def update_order(self, order: Order) -> int:
-        return self.orders.update(order.id, order)
-
-    def get_order(self, user_id: int) -> Optional[Order]:
-        for i in self.orders.get_user_orders(user_id):
-            return i
-
-    def get_orders(self, status: OrderStatus = None):
-        return self.orders.get_orders(status)
-
+    def order_for_user_not_exists(self, user_id: int) -> bool:
+        return not self.order_for_user_exists(user_id)

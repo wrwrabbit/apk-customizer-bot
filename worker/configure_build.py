@@ -1,9 +1,10 @@
 import glob
 import io
 import json
+import logging
 import os
-from random import Random
 import re
+import xml.sax.saxutils
 from pathlib import Path
 
 from PIL import Image
@@ -13,6 +14,7 @@ import config
 from models import Order
 from schemas.android_app_permission import AndroidAppPermission
 import utils
+from worker.app_signature_signer import extract_and_sign_app_signature
 
 
 class BuildConfigurator:
@@ -27,7 +29,9 @@ class BuildConfigurator:
     def update_project(self) -> None:
         self.update_text_sources()
         self.replace_icons()
-        self.replace_keystore()
+        if not self.order.sources_only:
+            self.replace_keystore()
+            self.update_keystore_related_text_sources()
         self.save_update_request_template()
 
     def update_text_sources(self) -> None:
@@ -35,43 +39,43 @@ class BuildConfigurator:
         self.update_text_source_file(
             relative_path="TMessagesProj/src/main/res/values*/strings.xml", search_by_path=True,
             src=r'(?<=<string name="AppName">)Telegram(?=</string>)',
-            dst=self.order.app_name,
+            dst=self.xml_escape(self.order.app_name),
         )
         self.update_text_source_file(
             relative_path="TMessagesProj/src/main/res/values*/strings.xml", search_by_path=True,
             src=r'(?<=<string name="AppNameBeta">)Telegram Beta(?=</string>)',
-            dst=self.order.app_name,
+            dst=self.xml_escape(self.order.app_name),
         )
 
         self.update_text_source_file(
             relative_path="TMessagesProj/src/main/assets/strings/overrides.xml",
             src=r'(?<=<string name="AppName">)Telegram(?=</string>)',
-            dst=self.order.app_name,
+            dst=self.xml_escape(self.order.app_name),
         )
         self.update_text_source_file(
             relative_path="TMessagesProj/src/main/assets/strings/overrides.xml",
             src=r'(?<=<string name="AppNameBeta">)Telegram(?=</string>)',
-            dst=self.order.app_name,
+            dst=self.xml_escape(self.order.app_name),
         )
         self.update_text_source_file(
             relative_path="TMessagesProj/src/main/assets/strings/overrides.xml",
             src=r'(?<=<string name="NotificationHiddenName">)Telegram(?=</string>)',
-            dst=self.order.app_name,
+            dst=self.xml_escape(self.order.app_name),
         )
         self.update_text_source_file(
             relative_path="TMessagesProj/src/main/assets/strings/overrides.xml",
             src=r'(?<=<string name="NotificationHiddenChatName">)Telegram(?=</string>)',
-            dst=self.order.app_name,
+            dst=self.xml_escape(self.order.app_name),
         )
         self.update_text_source_file(
             relative_path="TMessagesProj/src/main/assets/strings/overrides.xml",
             src=r'(?<=<string name="SecretChatName">)Telegram(?=</string>)',
-            dst=self.order.app_name,
+            dst=self.xml_escape(self.order.app_name),
         )
         self.update_text_source_file(
             relative_path="TMessagesProj/src/main/assets/strings/overrides.xml",
             src=r'(?<=<string name="NotificationHiddenMessage">)Update Available!(?=</string>)',
-            dst=self.order.app_notification_text,
+            dst=self.xml_escape(self.order.app_notification_text),
         )
 
         self.update_text_source_file(
@@ -90,26 +94,9 @@ class BuildConfigurator:
             dst=self.order.app_version_name,
         )
         self.update_text_source_file(
-            relative_path="gradle.properties",
-            src=r'(?<=RELEASE_KEY_PASSWORD=)UCKJJtMyqB!9uGrAw6xu',
-            dst=config.KEYSTORE_PASSWORD,
-        )
-        self.update_text_source_file(
-            relative_path="gradle.properties",
-            src=r'(?<=RELEASE_STORE_PASSWORD=)LdAaKx_MFWGzL4ix4Jj\*',
-            dst=config.KEYSTORE_PASSWORD,
-        )
-
-        self.update_text_source_file(
             relative_path="TMessagesProj_AppStandalone/google-services.json",
             src=r'(?<="package_name": ")org.telegram.messenger(?=")',
             dst=self.order.app_id,
-        )
-
-        self.update_text_source_file(
-            relative_path="TMessagesProj/src/main/res/values/ic_launcher_background.xml",
-            src=r'(?<=<color name="ic_launcher_background">#)ffffff(?=</color>)',
-            dst=f"{self.order.app_notification_color:0>6x}",
         )
 
         self.update_text_source_file(
@@ -119,14 +106,15 @@ class BuildConfigurator:
         )
         self.update_text_source_file(
             relative_path="TMessagesProj/src/main/java/org/telegram/messenger/partisan/masked_ptg/MaskedPtgConfig.java",
-            src=r'(?<=private static IMaskedPasscodeScreenFactory FACTORY = new )OriginalScreenFactory(?=\(\);)',
+            src=r'(?<=IMaskedPasscodeScreenFactory FACTORY = new )OriginalScreenFactory(?=\(\);)',
             dst=self.get_masked_screen_factory_class(),
         )
-        self.update_text_source_file(
-            relative_path="TMessagesProj/src/main/java/org/telegram/messenger/partisan/masked_ptg/MaskedPtgConfig.java",
-            src=r'(?<=return 0xff)ffffff(?=;)',
-            dst=f"{self.order.app_notification_color:0>6x}",
-        )
+        if self.order.app_notification_color != -1:
+            self.update_text_source_file(
+                relative_path="TMessagesProj/src/main/java/org/telegram/messenger/partisan/masked_ptg/MaskedPtgConfig.java",
+                src=r'(?<=private static final Integer PRIMARY_COLOR = )null(?=;)',
+                dst=f"0xff{self.order.app_notification_color:0>6x}",
+            )
 
     def update_permissions(self):
         permissions_mapping = {
@@ -238,18 +226,14 @@ class BuildConfigurator:
         ]
         notification_file_names = [
             'TMessagesProj/src/main/res/drawable-<dpi>/notification.png',
-            'TMessagesProj/src/main/res/mipmap-<dpi>/ic_launcher_foreground.png'
         ]
 
         with (Image.open(io.BytesIO(self.order.app_icon)) as icon,
               Image.open(io.BytesIO(self.order.app_notification_icon)) as notification_icon):
             for dpi_name, size in dpi_variants.items():
-                print(f"Replacing icon {dpi_name}")
-                icon_copy = icon.copy()
-                icon_copy = utils.crop_center_rectangle(icon_copy) 
-                icon_copy.thumbnail(size, Resampling.LANCZOS)
-                notification_icon_copy = notification_icon.copy()
-                notification_icon_copy.thumbnail(size, Resampling.LANCZOS)
+                logging.info(f"Replacing icon {dpi_name}")
+                icon_copy = icon.resize(size, Resampling.LANCZOS)
+                notification_icon_copy = notification_icon.resize(size, Resampling.LANCZOS)
                 for file_name_template in file_names + notification_file_names:
                     file_name = file_name_template.replace('<dpi>', dpi_name)
                     out_path = self.build_absolute_path(file_name)
@@ -259,7 +243,7 @@ class BuildConfigurator:
                                 icon_copy.save(f)
                             elif file_name_template in notification_file_names:
                                 notification_icon_copy.save(f)
-        print("Done replacing icons")
+        logging.info("Done replacing icons")
 
     def replace_keystore(self):
         keystore_path = self.build_absolute_path("TMessagesProj/config/release.keystore")
@@ -268,6 +252,26 @@ class BuildConfigurator:
             with open(keystore_path, "wb") as f:
                 f.write(self.order.keystore)
 
+    def update_keystore_related_text_sources(self):
+        full_keystore_password = self.order.keystore_password_salt + config.KEYSTORE_PASSWORD + self.order.keystore_password_salt
+        self.update_text_source_file(
+            relative_path="gradle.properties",
+            src=r'(?<=RELEASE_KEY_PASSWORD=)UCKJJtMyqB!9uGrAw6xu',
+            dst=full_keystore_password,
+        )
+        self.update_text_source_file(
+            relative_path="gradle.properties",
+            src=r'(?<=RELEASE_STORE_PASSWORD=)LdAaKx_MFWGzL4ix4Jj\*',
+            dst=full_keystore_password,
+        )
+        keystore_path = self.build_absolute_path("TMessagesProj/config/release.keystore")
+        signed_app_signature = extract_and_sign_app_signature(keystore_path, full_keystore_password)
+        self.update_text_source_file(
+            relative_path="TMessagesProj/src/main/java/org/telegram/messenger/partisan/appmigration/AppMigrator.java",
+            src=r'(?<=private static final String signedAppSignature = )null(?=;)',
+            dst='"' + signed_app_signature + '"',
+        )
+
     def save_update_request_template(self):
         template_dict = self.order.make_dict_for_worker()
         del template_dict['id']
@@ -275,3 +279,7 @@ class BuildConfigurator:
         template_path = self.build_absolute_path("TMessagesProj/src/main/assets/update-request-template.json")
         with open(template_path, "wb") as f:
             f.write(json.dumps(template_dict).encode())
+
+    def xml_escape(self, s: str):
+        escaped = xml.sax.saxutils.escape(s)
+        return escaped.replace("%", "%%")

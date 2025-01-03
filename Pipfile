@@ -20,6 +20,7 @@ names = "*"
 countryinfo = "*"
 pycryptodome = "*"
 argon2-cffi = "*"
+numpy = "*"
 
 [dev-packages]
 pytest = "*"

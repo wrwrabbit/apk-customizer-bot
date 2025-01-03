@@ -2,6 +2,7 @@ import glob
 import os.path
 import re
 import shutil
+import string
 import subprocess
 from datetime import datetime, timedelta
 from random import Random
@@ -14,6 +15,7 @@ from countryinfo import CountryInfo
 import config
 import utils
 from schemas.android_app_permission import default_permissions
+from src.localisation.localisation import Localisation
 from .app_generation_sources import app_id_sources
 from .app_generation_sources.app_template import AppTemplate
 from .app_generation_sources.app_templates import ROOT_APP_TEMPLATE
@@ -22,8 +24,9 @@ from models import Order
 
 
 class OrderGenerator:
-    def __init__(self, order: Order):
+    def __init__(self, order: Order, localisation: Localisation):
         self.order = order
+        self.localisation = localisation
         if config.SALT_FOR_DERIVATION_RANDOM_SEED_FROM_USER_ID is not None:
             random_seed = PBKDF2(str(self.order.user_id),
                                  config.SALT_FOR_DERIVATION_RANDOM_SEED_FROM_USER_ID.encode(),
@@ -38,7 +41,7 @@ class OrderGenerator:
         self.order.app_masked_passcode_screen = passcode_screen
         self.order.app_version_code = self.random_version_code()
         self.order.app_version_name = self.random_version_name()
-        self.order.app_notification_color = 0
+        self.order.app_notification_color = -1
         self.order.permissions = ",".join(default_permissions)
         self.generate_keystore()
 
@@ -48,12 +51,22 @@ class OrderGenerator:
     def generate_order_values_from_template(self, template: AppTemplate):
         if template.possible_names is not None:
             self.order.app_name = self.random.choice(template.possible_names)
-            self.order.app_id = self.generate_app_id()
+            self.order.app_id = self.random_app_id()
         if template.possible_icons is not None:
-            self.order.app_icon = self.choose_app_icon(template)
-            self.order.app_notification_icon = self.order.app_icon
+            self.order.app_icon = self.choose_icon(template.possible_icons)
+        if template.possible_notification_icons is not None:
+            self.order.app_notification_icon = self.choose_icon(template.possible_notification_icons)
         if template.possible_notifications is not None:
-            self.order.app_notification_text = self.random.choice(template.possible_notifications)
+            if isinstance(template.possible_notifications, list):
+                self.order.app_notification_text = self.random.choice(template.possible_notifications)
+            elif isinstance(template.possible_notifications, dict):
+                language = self.localisation.get_language()
+                if language not in template.possible_notifications:
+                    if self.localisation.is_russian_language() and "ru" in template.possible_notifications:
+                        language = "ru"
+                    else:
+                        language = "en"
+                self.order.app_notification_text = self.random.choice(template.possible_notifications[language])
 
         if template.inner_templates is not None:
             matched_templates = [
@@ -70,10 +83,10 @@ class OrderGenerator:
             self.generate_order_values_from_template(template)
 
 
-    def choose_app_icon(self, template: AppTemplate) -> bytes:
-        path = self.random.choice(template.possible_icons)
+    def choose_icon(self, icons: list[str]) -> bytes:
+        path = self.random.choice(icons)
         icon_paths = glob.glob(os.path.join("./bot/app_generation_sources/", path), recursive=True)
-        icon_paths = [path for path in icon_paths if not os.path.isdir(path)]
+        icon_paths = [path for path in icon_paths if not os.path.isdir(path) and not path.endswith(".example")]
         icon_path = self.random.choice(icon_paths)
         with open(icon_path, 'rb') as f:
             return f.read()
@@ -88,7 +101,7 @@ class OrderGenerator:
         return ".".join(parts)
 
 
-    def generate_app_id(self):
+    def random_app_id(self) -> str:
         prefix = self.random.choice(app_id_sources.PREFIXES)
         postfix = self.random.choice(app_id_sources.POSTFIXES)
         delimiter = self.random.choice(app_id_sources.DELIMITERS)
@@ -105,6 +118,7 @@ class OrderGenerator:
         return app_id
 
     def generate_keystore(self):
+        self.order.keystore_password_salt = self.generate_keystore_salt()
         keystore_dir = os.path.join(config.TMP_DIR, "keystores", str(self.order.id))
         os.makedirs(keystore_dir, exist_ok=True)
         keystore_path = os.path.join(keystore_dir, "release.keystore")
@@ -113,15 +127,22 @@ class OrderGenerator:
             self.order.keystore = f.read()
         shutil.rmtree(keystore_dir)
 
+    def generate_keystore_salt(self) -> str:
+        size = 32
+        possible_chars = string.ascii_lowercase + string.ascii_uppercase
+        salt_chars = [self.random.choice(possible_chars) for _ in range(0, size)]
+        return "".join(salt_chars)
+
     def generate_keytool_command(self, keystore_path: str):
         start_date = datetime.now() - timedelta(seconds=self.random.randint(0, keystore_sources.max_key_age))
         start_date_str = start_date.strftime("%Y/%m/%d %H:%M:%S")
         validity = self.random.choice(keystore_sources.key_validity_options)
         key_size = self.random.choice(keystore_sources.key_size_options)
+        full_keystore_password = self.order.keystore_password_salt + config.KEYSTORE_PASSWORD + self.order.keystore_password_salt
         return (f'keytool -genkey -keystore {keystore_path} -deststoretype JKS -keyalg RSA -keysize {key_size} '
                 f'-startdate "{start_date_str}" -validity {validity} -alias key0' +
                 f' -dname "{self.generate_distinguished_name_for_keystore()}"' +
-                f' -storepass {config.KEYSTORE_PASSWORD} -keypass {config.KEYSTORE_PASSWORD}')
+                f' -storepass {full_keystore_password} -keypass {full_keystore_password}')
 
     def generate_distinguished_name_for_keystore(self):
         full_name = names.get_full_name()

@@ -3,7 +3,7 @@ from typing import Optional
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
-from models.error_logs import ErrorLog
+from models import ErrorLog
 
 
 class ErrorLogsCRUD:

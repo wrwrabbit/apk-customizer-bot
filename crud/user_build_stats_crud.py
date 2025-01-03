@@ -29,7 +29,6 @@ class UserBuildStatsCRUD:
             sa.update(UserBuildStats)
             .values(
                 {
-                    UserBuildStats.user_id_hash: stats.user_id_hash,
                     UserBuildStats.last_build_date: stats.last_build_date,
                     UserBuildStats.successful_build_count: stats.successful_build_count,
                     UserBuildStats.failed_build_count: stats.failed_build_count,

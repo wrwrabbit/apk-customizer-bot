@@ -21,6 +21,9 @@ class Localisation:
     def set_language(self, lang):
         self._lang = lang
 
+    def is_russian_language(self):
+        return self._lang in {"ru", "be", "uk", "kk", "ky", "mo", "hy", "ka", "az", "uz"}
+
     def get_message_text(self, text_type):
         return Localisation.get_message_text_by_language(text_type, self._lang)
     

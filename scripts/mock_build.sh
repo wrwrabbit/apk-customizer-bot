@@ -16,7 +16,7 @@ else
     echo "[mock_build.sh] Mocking successful build"
     APK_PATH="Partisan-Telegram-Android/TMessagesProj/build/outputs/apk/afat/standalone"
     mkdir -p ${APK_PATH}
-    sleep 60
+    sleep 10
     echo "test" > ${APK_PATH}/app.apk
     touch "done"
 fi

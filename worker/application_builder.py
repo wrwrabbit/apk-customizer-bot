@@ -1,7 +1,7 @@
+import logging
 import os
 import shutil
 import subprocess
-import sys
 import threading
 import traceback
 from os.path import abspath
@@ -24,10 +24,15 @@ class ApplicationBuilder:
 
     def build(self):
         try:
-            print(f"Starting build for order #{self.order.id}")
+            logging.info(f"Starting build for order #{self.order.id}")
             self.recreate_order_dir()
             self.configure_build()
-            self.run_build_script()
+
+            if not self.order.sources_only:
+                self.run_build_script()
+            else:
+                self.make_sources_archive()
+
             if self.is_successful_build():
                 self.handle_successful_build()
             else:
@@ -47,7 +52,7 @@ class ApplicationBuilder:
         return utils.make_order_building_dir_path(self.order.id)
 
     def configure_build(self):
-        if config.MOCK_BUILD:
+        if config.MOCK_BUILD and not self.order.sources_only:
             return
         args = [
             abspath(self.make_order_dir_path()),
@@ -98,19 +103,31 @@ class ApplicationBuilder:
         else:
             return False
 
+    def make_sources_archive(self):
+        order_dir = self.make_order_dir_path()
+        sources_dir = os.path.join(order_dir, "Partisan-Telegram-Android")
+
+        shutil.rmtree(os.path.join(sources_dir, ".git"), ignore_errors=False)
+        os.remove(os.path.join(sources_dir, "TMessagesProj/config/release.keystore"))
+
+        shutil.make_archive(os.path.join(order_dir, "sources"), 'zip', sources_dir)
+
     def is_successful_build(self):
-        return os.path.isfile(os.path.join(self.make_order_dir_path(), "done"))
+        return os.path.isfile(os.path.join(self.make_order_dir_path(), "done")) or self.order.sources_only
 
     def handle_successful_build(self):
         with application_builder_critical_lock: # Wait until the order_completed is sent before terminating the worker.
-            self.controller_api.send_order_completed(self.order)
-        print(f"Build for order #{self.order.id} successful")
+            if not self.order.sources_only:
+                self.controller_api.send_order_completed(self.order)
+            else:
+                self.controller_api.send_sources_only_order_completed(self.order)
+        logging.info(f"Build for order #{self.order.id} successful")
 
     def handle_failed_build(self, exception: Optional[Exception] = None):
         if exception is not None:
-            print(f"During build the following exception occurred:", exception)
+            logging.error(f"During build the following exception occurred:", exception)
         else:
-            print(f"The build completed but there is no confirmation of success")
+            logging.error(f"The build completed but there is no confirmation of success")
         traceback.print_exc()
         with application_builder_critical_lock: # Wait until the order_failed is sent before terminating the worker.
             if exception is None:
@@ -119,9 +136,9 @@ class ApplicationBuilder:
                 exception_text = f"{type(exception)}\n\nstderr: {exception.stderr}\n\nstdout: {exception.stdout}"
             else:
                 exception_text = f"{type(exception)} {str(exception)}\n\n{traceback.format_exc()}"
-            print("exception_text", exception_text)
+            logging.error(f"exception_text {exception_text}")
             self.controller_api.send_order_failed(exception_text)
-        print(f"Build for order #{self.order.id} failed")
+        logging.error(f"Build for order #{self.order.id} failed")
 
     def remove_order_dir(self):
         shutil.rmtree(self.make_order_dir_path(), ignore_errors=True)

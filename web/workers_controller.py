@@ -61,7 +61,7 @@ def receive_order(worker: Worker):
     previous_order = orders.get_worker_order(worker.id)
     if previous_order is not None:
         return jsonify({"error": "Build has already started"}), 400
-    new_order = next(orders.get_orders_by_status(status=OrderStatus.queued), None)
+    new_order = orders.get_order_for_build()
     if new_order is None:
         return jsonify(new_order), 200
     new_order.status = get_next_status(new_order.status)
@@ -90,7 +90,7 @@ def order_completed(worker: Worker):
         return jsonify({"error": "Build did not start"}), 400
     if 'file' not in request.files:
         return jsonify({"error": "No file sent"}), 400
-    apk_dir = utils.make_order_apk_dir_path(previous_order.id)
+    apk_dir = utils.make_order_build_result_dir_path(previous_order.id)
     os.makedirs(apk_dir, exist_ok=True)
     filepath = os.path.join(
         apk_dir,
@@ -122,6 +122,44 @@ def order_failed(worker: Worker):
         print(request.json["error_text"])
         error_logs.add_log(request.json["error_text"])
     increase_user_build_stats(previous_order.user_id, successful=False)
+    return "", 204
+
+
+@app.route("/receive-sources-only-order", methods=["GET"])
+@jwt_required()
+@check_worker_id
+def receive_sources_only_order(worker: Worker):
+    new_order = orders.get_sources_only_order()
+    if new_order is None:
+        return jsonify(new_order), 200
+    workers.update_worker_online(worker.id)
+    return jsonify(new_order.make_dict_for_worker()), 200
+
+
+@app.route("/sources-only-order-completed", methods=["POST"])
+@jwt_required()
+@check_worker_id
+def sources_only_order_completed(worker: Worker):
+    order_id = request.args.get("order-id", None, type=int)
+    if order_id is None:
+        return jsonify({"error": "Order id required"}), 400
+    order = orders.get_order(order_id)
+    if order is None:
+        return jsonify({"error": f"There is no order with id {order_id}"}), 400
+    if order.status != OrderStatus.get_sources_queued or not order.sources_only:
+        return jsonify({"error": f"Order {order_id} is not sources only"}), 400
+    if 'file' not in request.files:
+        return jsonify({"error": "No file sent"}), 400
+    apk_dir = utils.make_order_build_result_dir_path(order.id)
+    os.makedirs(apk_dir, exist_ok=True)
+    filepath = os.path.join(
+        apk_dir,
+        "sources.zip",
+    )
+    file = request.files['file']
+    file.save(filepath)
+    order.status = get_next_status(order.status)
+    orders.update_order(order)
     return "", 204
 
 

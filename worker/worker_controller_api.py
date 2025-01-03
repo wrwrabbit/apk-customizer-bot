@@ -1,4 +1,6 @@
+import logging
 import os
+import sys
 import traceback
 from typing import Optional
 
@@ -15,7 +17,11 @@ class WorkerControllerApi:
     def __init__(self, host: str):
         self.http_session = requests.Session()
         self.http_session.headers.update({"Authorization": "Bearer " + config.WORKER_JWT})
-        self.http_session.verify = "worker/cert.pem"
+        cert_path = os.path.join(os.getcwd(), "worker", "cert.pem")
+        if not os.path.exists(cert_path):
+            logging.error("cert.pem DOES NOT EXIST!")
+            sys.exit(1)
+        self.http_session.verify = cert_path
         # on error retry reconnect after 0 sec, 2 sec, 4 sec ... 60 sec
         retries = Retry(total=100, backoff_factor=1, backoff_max=60, status_forcelist=[ 502, 503, 504 ])
         self.http_session.mount('https://', HTTPAdapter(max_retries=retries))
@@ -26,16 +32,16 @@ class WorkerControllerApi:
 
     def log_response(self, prefix: str, response: Response):
         if 200 <= response.status_code < 300:
-            print(prefix, response.status_code)
+            logging.info(f"{prefix}, {response.status_code}")
         else:
-            print(prefix, response.status_code, response.text)
+            logging.error(f"{prefix}, {response.status_code}, {response.text}")
 
     def send_keep_alive(self):
         try:
             response = self.http_session.get(self.make_url("/keep-alive"))
             self.log_response("Keep alive:", response)
         except Exception as e:
-            print(f"During send_keep_alive the following exception occurred:", e)
+            logging.error(f"During send_keep_alive the following exception occurred:", e)
             traceback.print_exc()
 
     def receive_order(self) -> Optional[Order]:
@@ -48,7 +54,18 @@ class WorkerControllerApi:
             values = response.json()
             return Order.create_order_from_dict(values) if values is not None else None
         except Exception as e:
-            print(f"During send_keep_alive the following exception occurred:", e)
+            logging.error(f"During receive_order the following exception occurred:", e)
+            traceback.print_exc()
+            return None
+
+    def receive_sources_only_order(self) -> Optional[Order]:
+        try:
+            response = self.http_session.get(self.make_url("/receive-sources-only-order"))
+            self.log_response(f"Receive sources only order:", response)
+            values = response.json()
+            return Order.create_order_from_dict(values) if values is not None else None
+        except Exception as e:
+            logging.error(f"During receive_order the following exception occurred:", e)
             traceback.print_exc()
             return None
 
@@ -72,3 +89,13 @@ class WorkerControllerApi:
         json = {"error_text": error_text} if error_text else None
         response = self.http_session.post(self.make_url("/order-failed"), json=json)
         self.log_response(f"Order failed:", response)
+
+    def send_sources_only_order_completed(self, order: Order):
+        filepath = os.path.join(
+            utils.make_order_building_dir_path(order.id),
+            "sources.zip",
+        )
+        with open(filepath, "rb") as file:
+            url = self.make_url(f"/sources-only-order-completed?order-id={order.id}")
+            response = self.http_session.post(url, files={"file": file})
+            self.log_response(f"Sources only order completed:", response)

@@ -9,7 +9,7 @@ from db import engine
 class ErrorLogsObserver:
     @staticmethod
     async def run(send_error: Callable[[str], Awaitable[Any]]):
-        logging.info("Starting order status observer")
+        logging.info("Starting ErrorLogsObserver")
         error_logs = ErrorLogsCRUD(engine)
         while True:
             error_log = error_logs.pop_log()

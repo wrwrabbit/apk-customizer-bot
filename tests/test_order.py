@@ -18,7 +18,8 @@ def test_create_order(session):
 
     assert len(order_list) == 0
 
-    orders.update_order_status(order_id, OrderStatus.built)
+    order = orders.get_user_order(user_id)
+    orders.update_order_status(order, OrderStatus.built)
 
     order_list = list(orders.get_orders_by_status(OrderStatus.built))
     assert len(order_list) == 1

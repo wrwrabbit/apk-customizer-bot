@@ -1,3 +1,4 @@
+import logging
 import os
 import signal
 import sys
@@ -12,6 +13,7 @@ from worker.application_builder import ApplicationBuilder, application_builder_c
 from worker.worker_controller_api import WorkerControllerApi
 
 global_current_order: Optional[Order] = None
+global_current_sources_only_order: Optional[Order] = None
 global_current_order_lock = threading.Lock()
 
 controller_api = WorkerControllerApi(config.WORKER_CONTROLLER_HOST)
@@ -20,12 +22,12 @@ graceful_shutdown = False
 
 def signal_handler(sig, frame):
     if sig == signal.SIGTERM:
-        print('SIGTERM received. The worker will stop as soon as possible.')
+        logging.info('SIGTERM received. The worker will stop as soon as possible.')
         # Wait until critical operations are completed before terminating the worker.
         with application_builder_critical_lock:
             sys.exit(0)
     elif sig == signal.SIGINT:
-        print('SIGINT received. The worker will stop after finishing current build if it builds any app.')
+        logging.info('SIGINT received. The worker will stop after finishing current build if it builds any app.')
         global graceful_shutdown
         graceful_shutdown = True
 
@@ -34,7 +36,7 @@ def process_current_order():
     global global_current_order
     with global_current_order_lock:
         if global_current_order is None:
-            print("Current order is None")
+            logging.info("Current order is None")
             return
         current_order = global_current_order
 
@@ -44,11 +46,27 @@ def process_current_order():
         global_current_order = None
 
 
+def process_current_sources_only_order():
+    global global_current_sources_only_order
+    with global_current_order_lock:
+        if global_current_sources_only_order is None:
+            logging.info("Current sources only order is None")
+            return
+        current_order = global_current_sources_only_order
+
+    ApplicationBuilder(controller_api, current_order).build()
+
+    with global_current_order_lock:
+        global_current_sources_only_order = None
+
+
 def main():
+    logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO, stream=sys.stdout)
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     global global_current_order
-    print("Build daemon started")
+    global global_current_sources_only_order
+    logging.info("Build daemon started")
     try:
         os.makedirs(config.TMP_DIR, exist_ok=True)
         while True:
@@ -60,9 +78,13 @@ def main():
                     global_current_order = controller_api.receive_order()
                     thread = threading.Thread(target=process_current_order)
                     thread.start()
+                if config.ALLOW_BUILD_SOURCES_ONLY and global_current_sources_only_order is None:
+                    global_current_sources_only_order = controller_api.receive_sources_only_order()
+                    thread = threading.Thread(target=process_current_sources_only_order)
+                    thread.start()
             time.sleep(config.WORKER_CHECK_INTERVAL_SEC)
     except Exception as e:
-        print("During main the following exception occurred:", e)
+        logging.error("During main the following exception occurred:", e)
         traceback.print_exc()
 
 

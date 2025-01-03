@@ -13,7 +13,6 @@ from crud.workers_crud import WorkersCRUD
 
 def fail_stuck_builds(orders: OrdersCRUD):
     # If the bot was stopped during building, the order may get stuck.
-    # It's status will be one of STATUSES_BUILDING.
     # So after restart we must reset status to build the order or send the apk again.
     stuck_statuses = [
         OrderStatus.build_started,
@@ -23,7 +22,15 @@ def fail_stuck_builds(orders: OrdersCRUD):
     for status in stuck_statuses:
         for order in orders.get_orders_by_status(status):
             print(f"Cleaning building status for order {order.id}")
-            orders.update_order_status(order.id, get_next_status(order.status, "repeat"))
+            order.worker_id = None
+            order.status = get_next_status(order.status, "repeat")
+            orders.update_order(order)
+
+
+def delete_finished_orders(orders: OrdersCRUD):
+    for order in orders.get_orders_by_status(OrderStatus.successfully_finished):
+        print(f"Deleting order {order.id}")
+        orders.remove_order(order.id)
 
 
 def reset_build_status_for_offline_workers(orders: OrdersCRUD):

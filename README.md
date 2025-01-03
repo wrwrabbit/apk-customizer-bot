@@ -26,17 +26,23 @@ Example of `.env` file (without real values)
 ```
 SKIP_UPDATES=False
 DELETE_MESSAGES_AFTER_SEC=3600
+DELETE_MESSAGES_WITHOUT_ORDERS_AFTER_SEC=1800
+DELETE_MESSAGES_WITH_FINISHED_ORDERS_AFTER_SEC=86400
 TOKEN=000000000:aaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 DATA_DIR=./data
 TMP_DIR=./data/tmp
 JWT_SECRET_KEY=CHANGE_ME
 ADMIN_CHAT_ID=123456789
+ERROR_LOGS_CHAT_ID=123456789
+STATS_CHAT_ID=123456789
+STATS_PERIOD=86400
 CONSIDER_WORKER_OFFLINE_AFTER_SEC=1800
 SALT_FOR_DERIVATION_RANDOM_SEED_FROM_USER_ID=CHANGE_ME
 USER_ID_HASH_SALT=CHANGE_ME
 FAILED_BUILD_COUNT_ALLOWED=1
-FLOOD_WAIT_INTERVALS_SEC=0,1,2
 DELETE_USER_BUILD_STATS_AFTER_SEC=5
+UPDATES_ALLOWED=True
+SET_BOT_NAME_AND_DESCRIPTION=False
 ```
 
 Copy all files with `.example` to the same location and remove `.example` suffix from the filename.
@@ -57,13 +63,21 @@ or **the right way** (for production).
 
 #### The Easy Way
 
-Replace 
+Modify docker-compose.yaml. Replace 
 
-`command: gunicorn -b 0.0.0.0:8000 web.workers_controller:app`
+```
+    command: gunicorn -b 0.0.0.0:8000 web.workers_controller:app
+    ports:
+      - "127.0.0.1:8000:8000"
+```
 
 with
 
-`command: gunicorn --certfile web/cert.pem --keyfile web/key.pem -b 0.0.0.0:8000 web.workers_controller:app`
+```
+    command: gunicorn --certfile web/cert.pem --keyfile web/key.pem -b 0.0.0.0:8000 web.workers_controller:app
+    ports:
+      - "8000:8000"
+```
 
 #### The Right Way
 
@@ -167,16 +181,23 @@ other containers, simply append the values to the existing .env.
 
 ```
 DATA_DIR=./data
-TMP_DIR=${DATA_DIR}/tmp
+TMP_DIR=./data/tmp
 MOCK_BUILD=False
 WORKER_CONTROLLER_HOST=127.0.0.1:8000
 WORKER_CHECK_INTERVAL_SEC=30
 WORKER_JWT=CHANGE_ME
 KEYSTORE_PASSWORD=CHANGE_ME
 BUILD_DOCKER_IMAGE_NAME=masked-partisan-telegram-build
+ALLOW_BUILD_SOURCES_ONLY=True
 ```
 
-Copy the `cert.pem` from the worker controller to the `worker` dir.
+Copy the `cert.pem` from the worker controller to the `worker` dir. 
+
+Generate RSA key for signing app signature:
+
+```bash
+openssl genrsa -out worker/private_key.pem
+```
 
 Run build worker:
 

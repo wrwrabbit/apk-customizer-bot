@@ -23,12 +23,13 @@ def test_on_order_status(session):
     result = fun(user_message)
     assert result is False
 
-    order_id = orders.create_order(user_id)
+    orders.create_order(user_id)
 
     result = fun(user_message)
     assert result is True
 
-    orders.update_order_status(order_id, OrderStatus.building)
+    order = orders.get_user_order(1984)
+    orders.update_order_status(order, OrderStatus.building)
 
     result = fun(user_message)
     assert result is False

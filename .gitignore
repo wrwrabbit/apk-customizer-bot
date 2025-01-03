@@ -144,8 +144,14 @@ local_secrets.py
 *.pem
 
 bot/app_generation_sources/app_templates.py
+
 bot/app_generation_sources/icons/**/*.png
 bot/app_generation_sources/icons/**/*.jpg
 bot/app_generation_sources/icons/**/*.jpeg
+
+bot/app_generation_sources/notification_icons/**/*.png
+bot/app_generation_sources/notification_icons/**/*.jpg
+bot/app_generation_sources/notification_icons/**/*.jpeg
+
 bot/app_generation_sources/app_id_sources.py
 bot/app_generation_sources/keystore_sources.py

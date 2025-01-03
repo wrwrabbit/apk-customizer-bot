@@ -26,13 +26,16 @@ class Order(Base):
     app_version_code = sa.Column(sa.INT, server_default="100")
     app_version_name = sa.Column(sa.String, server_default="1.0.0")
     app_notification_icon = sa.Column(BYTEA)
-    app_notification_color = sa.Column(sa.INT, server_default="0")
+    app_notification_color = sa.Column(sa.INT, server_default="0") # primary app color
     app_masked_passcode_screen = sa.Column(sa.String, server_default="calculator")
     app_notification_text = sa.Column(sa.String, server_default="Update Available!")
     permissions = sa.Column(sa.String, server_default="Update Available!")
 
     keystore = sa.Column(BYTEA, nullable=True)
+    keystore_password_salt = sa.Column(sa.String, nullable=True)
     update_tag = sa.Column(sa.String, nullable=True)
+    sources_only = sa.Column(sa.BOOLEAN, nullable=False, server_default="FALSE")
+    priority = sa.Column(sa.INT, nullable=False, server_default="1") # The higher the number, the lower the priority
 
     status = sa.Column(sa.String, server_default=get_next_status(None))
     worker_id = sa.Column(
@@ -48,7 +51,7 @@ class Order(Base):
     def make_dict_for_worker(self) -> dict:
         fields = {'id', 'app_name', 'app_id', 'app_icon', 'app_version_code', 'app_version_name',
                   'app_notification_icon', 'app_notification_color', 'app_masked_passcode_screen',
-                  'app_notification_text', 'permissions', 'keystore'}
+                  'app_notification_text', 'permissions', 'keystore', 'keystore_password_salt', 'sources_only'}
         result = {k: v for k, v in self.__dict__.items() if k in fields}
         result['app_icon'] = base64.b64encode(result['app_icon']).decode("UTF-8")
         result['app_notification_icon'] = base64.b64encode(result['app_notification_icon']).decode("UTF-8")

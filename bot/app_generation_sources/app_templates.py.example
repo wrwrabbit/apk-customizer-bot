@@ -9,13 +9,15 @@ ROOT_APP_TEMPLATE = AppTemplate(
         AppTemplate(
             screen_name="calculator",
             possible_names=["Calculator"],
-            possible_icons=["icons/calculator/**"]
+            possible_icons=["icons/calculator/**"],
+            possible_notification_icons=["notification_icons/calculator/**"],
         ),
 
         AppTemplate(
             screen_name="note",
             possible_names=["Note"],
-            possible_icons=["icons/note/**"]
+            possible_icons=["icons/note/**"],
+            possible_notification_icons=["notification_icons/note/**"],
         ),
 
         AppTemplate(
@@ -25,7 +27,8 @@ ROOT_APP_TEMPLATE = AppTemplate(
                     possible_names=["A Game"],
                     possible_icons=["icons/loading/Game.png"]
                 )
-            ]
+            ],
+            possible_notification_icons=["notification_icons/loading/**"],
         ),
     ]
 )

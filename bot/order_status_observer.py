@@ -1,10 +1,12 @@
 import asyncio
 import logging
+import traceback
 from typing import Optional
 
 from aiogram import types, Bot
 
 import utils
+from crud.error_logs_crud import ErrorLogsCRUD
 from models import Order
 from crud.orders_crud import  OrdersCRUD
 from schemas.android_app_permission import AndroidAppPermission
@@ -35,11 +37,15 @@ class OrderStatusObserver:
             OrderStatus.sources_downloaded
         ]
         while True:
-            for status in statuses_for_observation:
-                for order in self.orders.get_orders_by_status(status=status):
-                    response = await self.on_status_changed(order)
-                    MessagesDeleter.deleter.add_message(response)
-            await asyncio.sleep(1)
+            try:
+                for status in statuses_for_observation:
+                    for order in self.orders.get_orders_by_status(status=status):
+                        response = await self.on_status_changed(order)
+                        MessagesDeleter.deleter.add_message(response)
+                await asyncio.sleep(1)
+            except Exception as e:
+                ErrorLogsCRUD(self.orders.session).add_log(f"During OrderStatusObserver the following exception occurred:\n\n{traceback.format_exc()}")
+                logging.error("During OrderStatusObserver the following exception occurred:", e)
 
     async def on_status_changed(self, order: Optional[Order], localisation: Localisation = None) -> types.Message:
         if order is None:

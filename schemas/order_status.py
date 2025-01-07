@@ -90,7 +90,7 @@ _STATUS_TRANSITIONS: dict[OptionalOrderStatus, StatusTransition] = {
     OrderStatus.app_permissions: OrderStatus.confirmation,
     OrderStatus.confirmation: {"confirm": OrderStatus.queued, "customize_app_name_only": OrderStatus.app_name_only, "customize_app_icon_only": OrderStatus.app_icon_only, "customize": OrderStatus.app_name},
     OrderStatus.queued: OrderStatus.build_started,
-    OrderStatus.build_started: {"notified": OrderStatus.building, "repeat": OrderStatus.queued, "fail": OrderStatus.failed},
+    OrderStatus.build_started: {"notified": OrderStatus.building, "repeat": OrderStatus.queued, "fail": OrderStatus.failed, "success": OrderStatus.built},
     OrderStatus.building: {"success": OrderStatus.built, "repeat": OrderStatus.queued, "fail": OrderStatus.failed},
     OrderStatus.built: {"send_result": OrderStatus.sending_apk, "fail": OrderStatus.failed},
     OrderStatus.sending_apk: {None: OrderStatus.successfully_finished, "repeat": OrderStatus.built, "fail": OrderStatus.failed},

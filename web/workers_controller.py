@@ -1,4 +1,7 @@
+import logging
 import os
+import sys
+import traceback
 from datetime import datetime
 from functools import wraps
 from typing import Callable
@@ -46,8 +49,23 @@ def check_worker_id(fun: Callable):
     return wrapper
 
 
+def log_exceptions(fun: Callable):
+    @wraps(fun)
+    def wrapper():
+        try:
+            return fun()
+        except Exception as e:
+            exception_text = traceback.format_exc()
+            error_report = (f"Exception occurred during handling '{request.path}'.\n" +
+                                f"{exception_text}")
+            logging.error(error_report)
+            error_logs.add_log(error_report)
+    return wrapper
+
+
 @app.route("/keep-alive", methods=["GET"])
 @jwt_required()
+@log_exceptions
 @check_worker_id
 def keep_alive(worker: Worker):
     workers.update_worker_online(worker.id)
@@ -56,6 +74,7 @@ def keep_alive(worker: Worker):
 
 @app.route("/receive-order", methods=["GET"])
 @jwt_required()
+@log_exceptions
 @check_worker_id
 def receive_order(worker: Worker):
     previous_order = orders.get_worker_order(worker.id)
@@ -73,6 +92,7 @@ def receive_order(worker: Worker):
 
 @app.route("/get-current-order", methods=["GET"])
 @jwt_required()
+@log_exceptions
 @check_worker_id
 def get_current_order(worker: Worker):
     previous_order = orders.get_worker_order(worker.id)
@@ -83,6 +103,7 @@ def get_current_order(worker: Worker):
 
 @app.route("/order-completed", methods=["POST"])
 @jwt_required()
+@log_exceptions
 @check_worker_id
 def order_completed(worker: Worker):
     previous_order = orders.get_worker_order(worker.id)
@@ -108,6 +129,7 @@ def order_completed(worker: Worker):
 
 @app.route("/order-failed", methods=["POST"])
 @jwt_required()
+@log_exceptions
 @check_worker_id
 def order_failed(worker: Worker):
     previous_order = orders.get_worker_order(worker.id)
@@ -118,8 +140,7 @@ def order_failed(worker: Worker):
     previous_order.worker_id = None
     orders.update_order(previous_order)
     if request.json is not None and "error_text" in request.json:
-        print("###ERROR_TEXT###")
-        print(request.json["error_text"])
+        logging.error("error_text received from a build worker")
         error_logs.add_log(request.json["error_text"])
     increase_user_build_stats(previous_order.user_id, successful=False)
     return "", 204
@@ -127,6 +148,7 @@ def order_failed(worker: Worker):
 
 @app.route("/receive-sources-only-order", methods=["GET"])
 @jwt_required()
+@log_exceptions
 @check_worker_id
 def receive_sources_only_order(worker: Worker):
     new_order = orders.get_sources_only_order()
@@ -138,6 +160,7 @@ def receive_sources_only_order(worker: Worker):
 
 @app.route("/sources-only-order-completed", methods=["POST"])
 @jwt_required()
+@log_exceptions
 @check_worker_id
 def sources_only_order_completed(worker: Worker):
     order_id = request.args.get("order-id", None, type=int)
@@ -180,4 +203,5 @@ def increase_user_build_stats(user_id: int, successful: bool):
 
 
 if __name__ == "__main__":
+    logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO, stream=sys.stdout)
     app.run(host="0.0.0.0", port=8000, ssl_context=("web/cert.pem", "web/key.pem"))

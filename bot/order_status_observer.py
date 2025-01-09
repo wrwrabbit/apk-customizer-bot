@@ -4,7 +4,9 @@ import traceback
 from typing import Optional
 
 from aiogram import types, Bot
+from aiogram.exceptions import TelegramForbiddenError
 
+import db
 import utils
 from crud.error_logs_crud import ErrorLogsCRUD
 from models import Order
@@ -16,7 +18,7 @@ from . import build_result_sender
 from .order_generator import OrderGenerator
 from .primary_color import PrimaryColor, primary_colors_with_emoji
 from .stats import increase_build_start_count, increase_queued_count, increase_successful_build_count, \
-    increase_failed_build_count, increase_sources_count
+    increase_failed_build_count, increase_sources_count, increase_screen_stats, increase_queued_low_priority_count
 
 from .temporary_info import TemporaryInfo
 from .messages_deleter import MessagesDeleter
@@ -37,15 +39,18 @@ class OrderStatusObserver:
             OrderStatus.sources_downloaded
         ]
         while True:
-            try:
-                for status in statuses_for_observation:
-                    for order in self.orders.get_orders_by_status(status=status):
+            for status in statuses_for_observation:
+                for order in self.orders.get_orders_by_status(status=status):
+                    try:
                         response = await self.on_status_changed(order)
                         MessagesDeleter.deleter.add_message(response)
-                await asyncio.sleep(1)
-            except Exception as e:
-                ErrorLogsCRUD(self.orders.session).add_log(f"During OrderStatusObserver the following exception occurred:\n\n{traceback.format_exc()}")
-                logging.error("During OrderStatusObserver the following exception occurred:", e)
+                    except TelegramForbiddenError:
+                        self.orders.remove_order(order.id)
+                    except Exception as e:
+                        ErrorLogsCRUD(db.engine).add_log(
+                            f"During OrderStatusObserver the following exception occurred:\n\n{traceback.format_exc()}")
+                        logging.error("During OrderStatusObserver the following exception occurred:", e)
+            await asyncio.sleep(1)
 
     async def on_status_changed(self, order: Optional[Order], localisation: Localisation = None) -> types.Message:
         if order is None:
@@ -83,9 +88,12 @@ class OrderStatusObserver:
             return await self.send_order_confirmation_request(order, localisation)
         elif status == OrderStatus.queued:
             increase_queued_count()
+            if order.priority > 0:
+                increase_queued_low_priority_count()
             return await self.send_order_queued_notification(order, localisation)
         elif status == OrderStatus.build_started:
             increase_build_start_count()
+            increase_screen_stats(order.app_masked_passcode_screen)
             return await self.send_build_started_notification(order, localisation)
         elif status == OrderStatus.built:
             return await self.send_apk(order, localisation)
@@ -365,7 +373,7 @@ class OrderStatusObserver:
         return await self.bot.send_message(order.user_id, text)
 
     async def send_sources(self, order: Order, localisation: Localisation) -> types.Message:
-        print("send_sources")
+        logging.info("send_sources")
         await build_result_sender.BuildResultSender(self.bot, self.orders, self).send_build_result(order)
         return None
 

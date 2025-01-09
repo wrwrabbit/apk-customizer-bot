@@ -1,3 +1,4 @@
+import logging
 import os
 import asyncio
 import shutil
@@ -25,7 +26,7 @@ class BuildResultSender:
         self.status_observer = status_observer
 
     async def send_build_result(self, order: Order):
-        print(f"Sending build result for order #{order.id}")
+        logging.info(f"Sending build result for order #{order.id}")
         try:
             await self.try_send_build_result(order)
             order.status = get_next_status(order.status)
@@ -34,7 +35,7 @@ class BuildResultSender:
             delete_sending_apk_attempt_count(order.id)
         except BaseException as e:
             from .bot import send_error
-            print("Failed to send build result:", e)
+            logging.error(f"Failed to send build result: {e}")
             exception_text = traceback.format_exc()
             await send_error(f"Failed to send build result:\n\n{exception_text}")
             traceback.print_exc()

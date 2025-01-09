@@ -433,22 +433,22 @@ translations = {
     'build-ended': {
         'en': "Your Partisan Telegram has been built. Install the apk file from the post above.\n\n" +
               "If you want to check the source code of the application, click the \"{}\" button.\n\n" +
-              "PAY ATTENTION! This version of the Partisan Telegram is updated only in the way that is described on <a href='https://t.me/cpartisans_security'>the channel</a>. " +
+              "PAY ATTENTION! This version of the Partisan Telegram is updated only in the way that is described on <a href='https://t.me/cpartisans_security/761'>the channel</a>. " +
               "If you run the bot again and set up all the parameters, as the previous time, this will not allow you to update the current application. " +
               "In this way, you can only get a new application that cannot be installed on the phone in parallel with the current one.",
         'ru': "Ваш Партизанский Телеграм собран. Установите файл с расширением apk из сообщения выше.\n\n" +
               "Если Вы хотите проверить исходный код приложения, нажмите кнопку \"{}\".\n\n" +
-              "ОБРАТИТЕ ВНИМАНИЕ! Такая версия Партизанского Телеграма обновляется только тем способом, который описан на <a href='https://t.me/cpartisans_security'>канале</a>. " +
+              "ОБРАТИТЕ ВНИМАНИЕ! Такая версия Партизанского Телеграма обновляется только тем способом, который описан на <a href='https://t.me/cpartisans_security/761'>канале</a>. " +
               "Если вы запустите бот снова и настроите все параметры, как в предыдущий раз, это не позволит вам обновить текущее приложение. " +
               "Таким способом вы можете получить только новое приложение, которое не удастся установить на телефон параллельно с текущим.",
         'be': "Ваш Партызанскі Тэлеграм сабраны. Усталюйце файл з пашырэннем apk з паведамлення вышэй.\n\n" +
               "Калі Вы жадаеце праверыць зыходны код дадатка, націсніце кнопку \"{}\".\n\n" +
-              "Звярніце ўвагу! Гэтая версія Партызанскага Тэлеграма абнаўляецца толькі тым спосабам, як апісаны на <a href='https://t.me/cpartisans_security'>канале</a>. " +
+              "Звярніце ўвагу! Гэтая версія Партызанскага Тэлеграма абнаўляецца толькі тым спосабам, як апісаны на <a href='https://t.me/cpartisans_security/761'>канале</a>. " +
               "Калі вы зноў запусціце бота і ўсталюйце ўсе параметры, як у папярэдні раз, гэта не дазволіць вам абнавіць бягучы дадатак. " +
               "Такім чынам, вы можаце атрымаць толькі новы дадатак, якое не можа быць усталявана па тэлефоне паралельна з бягучым.",
         'uk': "Ваш Партизанський Телеграм зібрано. Встановіть файл із розширенням apk із повідомлення вище.\n\n" +
               "Якщо Ви бажаєте перевірити вихідний код додатку, натисніть кнопку \"{}\".\n\n" +
-              "ЗВЕРНІТЬ УВАГУ! Така версія Партизанського Телеграма оновлюється лише тим способом, який описаний на <a href='https://t.me/cpartisans_security'>каналі</a>. " +
+              "ЗВЕРНІТЬ УВАГУ! Така версія Партизанського Телеграма оновлюється лише тим способом, який описаний на <a href='https://t.me/cpartisans_security/761'>каналі</a>. " +
               "Якщо ви запустите бот знову і налаштуєте всі параметри, як у попередній раз, це не дозволить вам оновити поточний додаток. " +
               "Таким чином ви можете отримати тільки новий додаток, яку не вдасться встановити на телефон паралельно з поточним.",
     },
@@ -658,10 +658,10 @@ translations = {
               "При оновленні замаскованого додатка код версії буде автоматично збільшуватися.",
     },
     'version-code-must-be-integer': {
-        'en': "The code must be an <b>integer</b> number no greater than {}.",
-        'ru': "Код должен быть <b>целым</b> числом не более {}.",
-        'be': "Код павінен быць <b>цэлым</b> лікам не больш {}.",
-        'uk': "Код повинен бути <b>цілим</b> числом не більше {}.",
+        'en': "The code must be an <b>integer</b> number greater than 0 and no greater than {}.",
+        'ru': "Код должен быть <b>целым</b> числом больше 0 и не более {}.",
+        'be': "Код павінен быць <b>цэлым</b> лікам больш за 0 і не больш за {}.",
+        'uk': "Код повинен бути <b>цілим</b> числом більше 0 і не більше {}.",
     },
     'ask-for-notification-text': {
         'en': "Enter the text of the notification that will be displayed instead of Telegram notifications. " +

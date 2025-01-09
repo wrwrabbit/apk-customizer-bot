@@ -223,8 +223,7 @@ class OrdersCRUD:
 
     def get_orders_count(self) -> int:
         q = sa.select(sa.func.count(Order.id))
-        result = len(self.session.execute(q).fetchall())
-        return result
+        return self.session.execute(q).scalar()
 
     def get_count_of_orders_by_status(self, status: Union[list, OrderStatus]) -> int:
         q = sa.select([sa.func.count()]).select_from(Order.__table__)
@@ -233,5 +232,4 @@ class OrdersCRUD:
                 q = q.where(Order.status.in_(status))
             elif isinstance(status, OrderStatus):
                 q = q.where(Order.status == status)
-        result = self.session.execute(q).scalar()
-        return result
+        return self.session.execute(q).scalar()

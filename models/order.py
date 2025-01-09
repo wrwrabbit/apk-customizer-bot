@@ -13,7 +13,7 @@ class Order(Base):
 
     id = sa.Column(sa.Integer, primary_key=True, autoincrement=True)
 
-    user_id = sa.Column(sa.BIGINT, nullable=False)
+    user_id = sa.Column(sa.BIGINT, nullable=False, index=True)
     record_created = sa.Column(
         sa.DateTime,
         nullable=False,

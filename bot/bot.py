@@ -83,7 +83,6 @@ async def start():
     MessagesDeleter.deleter.add_on_all_messages_deleted_listener(on_all_user_messages_deleted)
     dp.startup.register(on_startup)
     await dp.start_polling(bot)
-    await MessagesDeleter.deleter.delete_all_messages()
 
 
 def on_all_user_messages_deleted(user_id: int):
@@ -775,7 +774,6 @@ async def confirm_app_id(call: types.CallbackQuery, lang:str = None) -> types.Me
 async def customize_app_id(message: types.Message) -> types.Message:
     user_id = message.from_user.id
     localisation = TemporaryInfo.get_localisation(message)
-    await clear_buttons_from_messages(user_id)
 
     order = orders.get_user_order(user_id)
     app_id_pattern = re.compile(r'^([A-Za-z]{1}[A-Za-z\d_]*\.)+[A-Za-z][A-Za-z\d_]*$')
@@ -783,12 +781,12 @@ async def customize_app_id(message: types.Message) -> types.Message:
         return await message.answer(
             localisation.get_message_text("invalid-app-id").format(config.APP_ID_DOCS_URL)
         )
+    await clear_buttons_from_messages(user_id)
     app_id = message.text.lower()
     order.app_id = app_id
     order.status = get_next_status(order.status)
     orders.update_order(order)
-    response = await status_observer.on_status_changed(order, localisation)
-    return response
+    return await status_observer.on_status_changed(order, localisation)
 
 
 @dp.message(
@@ -800,7 +798,6 @@ async def customize_app_id(message: types.Message) -> types.Message:
 async def customize_icon(message: types.Message) -> types.Message:
     user_id = message.from_user.id
     localisation = TemporaryInfo.get_localisation(message)
-    await clear_buttons_from_messages(user_id)
 
     order = orders.get_user_order(user_id)
 
@@ -816,6 +813,8 @@ async def customize_icon(message: types.Message) -> types.Message:
     icon_bytes = await validate_and_resize_icon(order, icon_bytes, localisation)
     if icon_bytes is None:
         return None
+
+    await clear_buttons_from_messages(user_id)
 
     if order.status == OrderStatus.app_notification_icon:
         order.app_notification_icon = icon_bytes
@@ -934,18 +933,18 @@ async def customize_version_name(message: types.Message) -> types.Message:
 async def customize_version_code(message: types.Message) -> types.Message:
     user_id = message.from_user.id
     localisation = TemporaryInfo.get_localisation(message)
-    await clear_buttons_from_messages(user_id)
 
     order = orders.get_user_order(user_id)
     try:
         version_code = int(message.text)
-        if version_code > config.MAX_VERSION_CODE:
+        if version_code > config.MAX_VERSION_CODE or version_code <= 0:
             raise ValueError()
         order.app_version_code = version_code
     except ValueError:
         text = localisation.get_message_text("version-code-must-be-integer").format(config.MAX_VERSION_CODE)
         return await message.answer(text)
 
+    await clear_buttons_from_messages(user_id)
     orders.update_order(order)
     orders.update_order_status(order, get_next_status(order.status))
     return await status_observer.on_status_changed(order, localisation)

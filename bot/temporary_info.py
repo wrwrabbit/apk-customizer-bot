@@ -5,6 +5,7 @@ from src.localisation.localisation import Localisation
 _processed_media_groups: list[tuple[int, str]] = []
 _sending_apk_attempts: dict[int, int] = {}
 _messages_with_buttons: dict[int, list[types.Message]] = {}
+_blocked_users: set[int] = set()
 
 class TemporaryInfo:	
     #This method is done in a way that in case the maintainer wishes to get the language

@@ -876,6 +876,8 @@ async def validate_and_resize_icon(order: Order, icon_bytes: bytes, localisation
                     resized_image = cropped_image
                 result_array = io.BytesIO()
                 if not has_transparency:
+                    if resized_image.mode != 'RGB':
+                        resized_image = resized_image.convert('RGB')
                     resized_image.save(result_array, format='JPEG')
                 else:
                     resized_image.save(result_array, format='PNG')

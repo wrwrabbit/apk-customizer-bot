@@ -282,4 +282,6 @@ class BuildConfigurator:
 
     def xml_escape(self, s: str):
         escaped = xml.sax.saxutils.escape(s)
-        return escaped.replace("%", "%%")
+        return (escaped
+                .replace("%", "%%")
+                .replace("'", "\\'"))

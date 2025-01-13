@@ -88,7 +88,7 @@ class OrderStatusObserver:
             return await self.send_order_confirmation_request(order, localisation)
         elif status == OrderStatus.queued:
             increase_queued_count()
-            if order.priority > 0:
+            if order.priority > 1:
                 increase_queued_low_priority_count()
             return await self.send_order_queued_notification(order, localisation)
         elif status == OrderStatus.build_started:

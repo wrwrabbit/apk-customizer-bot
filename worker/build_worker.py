@@ -36,7 +36,6 @@ def process_current_order():
     global global_current_order
     with global_current_order_lock:
         if global_current_order is None:
-            logging.info("Current order is None")
             return
         current_order = global_current_order
 
@@ -50,7 +49,6 @@ def process_current_sources_only_order():
     global global_current_sources_only_order
     with global_current_order_lock:
         if global_current_sources_only_order is None:
-            logging.info("Current sources only order is None")
             return
         current_order = global_current_sources_only_order
 

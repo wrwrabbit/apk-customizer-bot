@@ -883,7 +883,7 @@ async def validate_and_resize_icon(order: Order, icon_bytes: bytes, localisation
                     resized_image.save(result_array, format='PNG')
                 result_bytes = result_array.getvalue()
                 return result_bytes
-    except UnidentifiedImageError:
+    except (UnidentifiedImageError, OSError):
         error_message = await bot.send_message(order.user_id, localisation.get_message_text("file-is-not-image"))
 
     if error_message:

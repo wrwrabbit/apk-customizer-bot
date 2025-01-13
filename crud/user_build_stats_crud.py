@@ -34,7 +34,7 @@ class UserBuildStatsCRUD:
                     UserBuildStats.failed_build_count: stats.failed_build_count,
                 }
             )
-            .where(UserBuildStats.user_id_hash == UserBuildStats.user_id_hash)
+            .where(UserBuildStats.user_id_hash == stats.user_id_hash)
         )
 
     def get_user_build_stats(self, user_id_hash: str) -> Optional[UserBuildStats]:

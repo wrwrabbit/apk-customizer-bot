@@ -24,7 +24,10 @@ class ApplicationBuilder:
 
     def build(self):
         try:
-            logging.info(f"Starting build for order #{self.order.id}")
+            if not self.order.sources_only:
+                logging.info(f"Starting build for order #{self.order.id}")
+            else:
+                logging.info(f"Starting build for SOURCES #{self.order.id}")
             self.recreate_order_dir()
             self.configure_build()
 

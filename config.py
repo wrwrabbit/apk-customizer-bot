@@ -38,6 +38,7 @@ FAILED_BUILD_COUNT_ALLOWED = int(os.environ.get("FAILED_BUILD_COUNT_ALLOWED", "1
 DELETE_USER_BUILD_STATS_AFTER_SEC = int(os.environ.get("DELETE_USER_BUILD_STATS_AFTER_SEC", "1"))
 UPDATES_ALLOWED = os.environ.get("UPDATES_ALLOWED", "True").lower() in ("true", "1", "t")
 SET_BOT_NAME_AND_DESCRIPTION = os.environ.get("SET_BOT_NAME_AND_DESCRIPTION", "True").lower() in ("true", "1", "t")
+DELAY_BEFORE_UPDATE_ORDER_BUILD_SEC = int(os.environ.get("DELAY_BEFORE_UPDATE_ORDER_BUILD_SEC", "60"))
 
 # Database
 if os.environ.get("DOCKER"):

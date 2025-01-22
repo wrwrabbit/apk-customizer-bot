@@ -1,8 +1,11 @@
+from datetime import datetime, timedelta
 from typing import Iterator, Optional, Union
 
+import pytz
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
+import config
 from models import Order
 from schemas.order_status import OrderStatus, get_next_status
 
@@ -26,11 +29,13 @@ class OrdersCRUD:
         return result.scalar()
 
     def insert_configured_order(self, user_id: int, order: Order) -> Optional[Order]:
+        record_created = datetime.now().astimezone(pytz.utc) + timedelta(seconds=config.DELAY_BEFORE_UPDATE_ORDER_BUILD_SEC)
         result = self.session.execute(
             sa.insert(Order)
             .values(
                 {
                     Order.user_id: user_id,
+                    Order.record_created: record_created,
                     Order.app_icon: order.app_icon,
                     Order.app_name: order.app_name,
                     Order.app_id: order.app_id,
@@ -46,7 +51,7 @@ class OrdersCRUD:
                     Order.update_tag: order.update_tag,
                     Order.priority: order.priority,
 
-                    Order.status: OrderStatus.queued,
+                    Order.status: OrderStatus.update_queued,
                 }
             )
             .returning(*Order.__table__.c)
@@ -182,7 +187,8 @@ class OrdersCRUD:
 
     def get_order_for_build(self) -> Optional[Order]:
         q = (sa.select(*Order.__table__.c)
-             .where((Order.status == OrderStatus.queued) & (Order.sources_only == False))
+             .where(((Order.status == OrderStatus.queued) | (Order.status == OrderStatus.update_queued)) & (Order.sources_only == False))
+             .where(Order.record_created < datetime.now().astimezone(pytz.utc))
              .order_by(Order.record_created))
 
         row = self.session.execute(q).fetchone()

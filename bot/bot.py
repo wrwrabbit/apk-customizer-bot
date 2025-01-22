@@ -30,6 +30,7 @@ import config
 import utils
 from bot.error_logs_observer import ErrorLogsObserver
 from bot.order_generator import OrderGenerator
+from bot.order_validator import validate_order, validate_app_id
 from bot.primary_color import PrimaryColor
 from bot.stats import increase_start_count, increase_configuration_start_count, increase_update_start_count, \
     increase_cancel_count, period_stats, uptime_stats
@@ -90,7 +91,9 @@ def on_all_user_messages_deleted(user_id: int):
 
     order = orders.get_user_order(user_id)
     if order is not None:
-        need_remove_order = order.status not in STATUSES_BUILDING and order.status != OrderStatus.queued
+        need_remove_order = (order.status not in STATUSES_BUILDING
+                             and order.status != OrderStatus.queued
+                             and order.status != OrderStatus.update_queued)
         if need_remove_order:
             orders.remove_order(order.id)
     if graceful_shutdown_in_progress and orders.get_orders_count() == 0:
@@ -205,16 +208,37 @@ def on_order_not_exists(
     return queue.order_for_user_not_exists(user_id)
 
 
-def validate_update_build_request(message: types.Message) -> bool:
+async def validate_update_build_request(message: types.Message) -> bool:
     if not config.UPDATES_ALLOWED:
         return False
-    file_name = message.document.file_name
-    return (file_name.startswith("update-")
-            and file_name.endswith(".json")
-            and message.document.file_size < config.FILE_SIZE_LIMIT)
+    try:
+        file_name = message.document.file_name
+        good_file_metadata = (file_name.startswith("update-")
+                              and file_name.endswith(".json")
+                              and message.document.file_size < config.FILE_SIZE_LIMIT)
+        if not good_file_metadata:
+            return False
+
+        file = await bot.get_file(message.document.file_id)
+        with open(file.file_path, 'r') as f:
+            order_str = f.read()
+
+        order_json = json.loads(order_str)
+        temp_order = Order.create_order_from_dict(order_json)
+        if temp_order.id is not None or not isinstance(temp_order.update_tag, str) or temp_order.sources_only:
+            return False
+        if not validate_order(temp_order):
+            return False
+        return True
+    except:
+        return False
 
 
-async def send_cancelled_message(message: Union[types.Message, types.CallbackQuery]) -> types.Message:
+async def send_cancelled_message(message: Union[types.Message, types.CallbackQuery], previous_order: Optional[Order]) -> types.Message:
+    if previous_order and previous_order.update_tag:
+        message_prefix = f"#update-request-failed-{previous_order.update_tag}\n\n"
+    else:
+        message_prefix = ""
     localisation = TemporaryInfo.get_localisation(message)
     clear_bot_text = localisation.get_message_text("clear-bot")
     start_configuration_again_text = localisation.get_message_text("start-configuration-again")
@@ -233,7 +257,7 @@ async def send_cancelled_message(message: Union[types.Message, types.CallbackQue
         ]
     ])
     actual_message = message if isinstance(message, types.Message) else message.message
-    text = localisation.get_message_text("canceled").format(start_configuration_again_text, clear_bot_text)
+    text = message_prefix + localisation.get_message_text("canceled").format(start_configuration_again_text, clear_bot_text)
     return await actual_message.answer(text, reply_markup=markup)
 
 
@@ -242,12 +266,14 @@ async def send_stats(chat_id: int) -> types.Message:
     count_of_orders = orders.get_orders_count()
     count_of_orders_configuring = orders.get_count_of_orders_by_status(STATUSES_CONFIGURING)
     count_of_orders_queue = orders.get_count_of_orders_by_status(OrderStatus.queued)
+    count_of_orders_update_queue = orders.get_count_of_orders_by_status(OrderStatus.update_queued)
     count_of_orders_building = orders.get_count_of_orders_by_status(STATUSES_BUILDING + STATUSES_GETTING_SOURCES)
     count_of_orders_finished = orders.get_count_of_orders_by_status(STATUSES_FINISHED)
     current_stats_text = f"Number of users with messages: {count_of_users_with_messages}\n" + \
                          f"Number of users with orders: {count_of_orders}\n" + \
                          f"- Configuring: {count_of_orders_configuring}\n" + \
                          f"- Queue: {count_of_orders_queue}\n" + \
+                         f"- Update Queue: {count_of_orders_update_queue}\n" + \
                          f"- Building: {count_of_orders_building}\n" + \
                          f"- Finished: {count_of_orders_finished}"
     period_stats_text = f"<b>Period Stats</b>:\n{period_stats.format()}"
@@ -304,7 +330,7 @@ async def get_order_status(message: types.Message) -> types.Message:
 
     if order.status in STATUSES_CONFIGURING:
         return await message.answer(localisation.get_message_text("status-configuring"))
-    elif order.status == OrderStatus.queued:
+    elif order.status == OrderStatus.queued or order.status == OrderStatus.update_queued:
         queue_order_count = orders.get_order_queue_position(order)
         return await message.answer(localisation.get_message_text("status-queued").format(queue_order_count))
     elif order.status in STATUSES_BUILDING:
@@ -342,7 +368,7 @@ async def cancel_order(message: types.Message) -> types.Message:
         return await message.answer(localisation.get_message_text("cannot-cancel"))
     increase_cancel_count()
     orders.remove_order(order.id)
-    result = await send_cancelled_message(message)
+    result = await send_cancelled_message(message, order)
     await MessagesDeleter.deleter.delete_all_messages(message.chat.id)
     return result
 
@@ -397,6 +423,7 @@ async def create_order_for_app_update_with_file(message: types.Message) -> types
     # If the validation fails by validate_update_build_request, the message will be handled by the fallback_documents.
     user_id = message.from_user.id
     localisation = TemporaryInfo.get_localisation(message)
+    await clear_buttons_from_messages(user_id)
 
     increase_update_start_count()
 
@@ -419,6 +446,23 @@ async def create_order_for_app_update_with_file(message: types.Message) -> types
     order.priority = get_order_priority(user_id)
     orders.insert_configured_order(user_id, order)
     order = orders.get_user_order(user_id)
+    return await status_observer.on_status_changed(order, localisation)
+
+
+@dp.message(
+    Command(commands=['customize']),
+    partial(on_order_status, orders, [OrderStatus.update_queued])
+)
+@log_exceptions
+@auto_delete_messages
+async def confirm_order(call: types.CallbackQuery) -> types.Message:
+    user_id = call.from_user.id
+    localisation = TemporaryInfo.get_localisation(call)
+    await clear_buttons_from_messages(user_id)
+
+    order = orders.get_user_order(user_id)
+    order.status = get_next_status(order, "customize")
+    orders.update_order(order)
     return await status_observer.on_status_changed(order, localisation)
 
 
@@ -626,13 +670,13 @@ async def customize_masked_passcode_screen(call: types.CallbackQuery) -> types.M
         raise Exception("Invalid screen data")
 
     if call.data == "show_advanced_screens":
-        orders.update_order_status(order, get_next_status(order.status, "show_advanced_screens"))
+        orders.update_order_status(order, get_next_status(order, "show_advanced_screens"))
         return await status_observer.on_status_changed(order, localisation)
 
     masked_screen_name = call.data.replace("screen_", "")
     OrderGenerator(order, localisation).generate_order_values(masked_screen_name)
     orders.update_order(order)
-    orders.update_order_status(order, get_next_status(order.status))
+    orders.update_order_status(order, get_next_status(order))
 
     return await status_observer.on_status_changed(order, localisation)
 
@@ -654,19 +698,19 @@ async def customize_advanced_masked_passcode_screen(call: types.CallbackQuery) -
         raise Exception("Invalid screen data")
 
     if call.data == "back":
-        orders.update_order_status(order, get_next_status(order.status, "back"))
+        orders.update_order_status(order, get_next_status(order, "back"))
         return await status_observer.on_status_changed(order, localisation)
 
     masked_screen_name = call.data.replace("screen_", "")
     OrderGenerator(order, localisation).generate_order_values(masked_screen_name)
     orders.update_order(order)
-    orders.update_order_status(order, get_next_status(order.status))
+    orders.update_order_status(order, get_next_status(order))
 
     return await status_observer.on_status_changed(order, localisation)
 
 
 @dp.callback_query(
-    partial(on_order_status, orders, [OrderStatus.generated, OrderStatus.confirmation])
+    partial(on_order_status, orders, [OrderStatus.generated, OrderStatus.confirmation, OrderStatus.update_confirmation])
 )
 @log_exceptions
 @auto_delete_messages
@@ -688,13 +732,13 @@ async def confirm_order(call: types.CallbackQuery) -> types.Message:
         transition_name = "customize"
     else:
         return None
-    order.status = get_next_status(order.status, transition_name)
+    order.status = get_next_status(order, transition_name)
     orders.update_order(order)
     return await status_observer.on_status_changed(order, localisation)
 
 
 @dp.message(
-    partial(on_order_status, orders, [OrderStatus.generated, OrderStatus.confirmation])
+    partial(on_order_status, orders, [OrderStatus.generated, OrderStatus.confirmation, OrderStatus.update_confirmation])
 )
 @log_exceptions
 @auto_delete_messages
@@ -716,7 +760,7 @@ async def confirm_order(call: types.CallbackQuery) -> types.Message:
     await clear_buttons_from_messages(user_id)
 
     order = orders.get_user_order(user_id)
-    orders.update_order_status(order, get_next_status(order.status))
+    orders.update_order_status(order, get_next_status(order))
     return await status_observer.on_status_changed(order, localisation)
 
 
@@ -733,11 +777,9 @@ async def customize_app_name(message: types.Message, lang:str = None) -> types.M
 
     order = orders.get_user_order(user_id)
     order.app_name = message.text
-    if order.status == OrderStatus.app_name: # The next step is app id generation
-        order.app_id = ''
-    elif order.status == OrderStatus.app_name_only: # The next step is confirmation. Let's generate a new app id that matches the app name.
+    if order.status == OrderStatus.app_name_only: # The next step is confirmation. Let's generate a new app id that matches the app name.
         order.app_id = OrderGenerator(order, localisation).random_app_id()
-    order.status = get_next_status(order.status)
+    order.status = get_next_status(order)
     orders.update_order(order)
 
     return await status_observer.on_status_changed(order, localisation)
@@ -757,7 +799,7 @@ async def confirm_app_id(call: types.CallbackQuery, lang:str = None) -> types.Me
     order = orders.get_user_order(user_id)
     if call.data != 'custom_app_id':
         order.app_id = call.data
-        order.status = get_next_status(order.status)
+        order.status = get_next_status(order)
         orders.update_order(order)
         response = await status_observer.on_status_changed(order, localisation)
     else:
@@ -776,15 +818,14 @@ async def customize_app_id(message: types.Message) -> types.Message:
     localisation = TemporaryInfo.get_localisation(message)
 
     order = orders.get_user_order(user_id)
-    app_id_pattern = re.compile(r'^([A-Za-z]{1}[A-Za-z\d_]*\.)+[A-Za-z][A-Za-z\d_]*$')
-    if not app_id_pattern.fullmatch(message.text):
+    if not validate_app_id(message.text):
         return await message.answer(
             localisation.get_message_text("invalid-app-id").format(config.APP_ID_DOCS_URL)
         )
     await clear_buttons_from_messages(user_id)
     app_id = message.text.lower()
     order.app_id = app_id
-    order.status = get_next_status(order.status)
+    order.status = get_next_status(order)
     orders.update_order(order)
     return await status_observer.on_status_changed(order, localisation)
 
@@ -820,7 +861,7 @@ async def customize_icon(message: types.Message) -> types.Message:
         order.app_notification_icon = icon_bytes
     else:
         order.app_icon = icon_bytes
-    order.status = get_next_status(order.status)
+    order.status = get_next_status(order)
     orders.update_order(order)
     return await status_observer.on_status_changed(order, localisation)
 
@@ -922,7 +963,7 @@ async def customize_version_name(message: types.Message) -> types.Message:
     localisation = TemporaryInfo.get_localisation(message)
     order.app_version_name = message.text
     orders.update_order(order)
-    orders.update_order_status(order, get_next_status(order.status))
+    orders.update_order_status(order, get_next_status(order))
     return await status_observer.on_status_changed(order, localisation)
 
 
@@ -941,14 +982,19 @@ async def customize_version_code(message: types.Message) -> types.Message:
         version_code = int(message.text)
         if version_code > config.MAX_VERSION_CODE or version_code <= 0:
             raise ValueError()
-        order.app_version_code = version_code
     except ValueError:
         text = localisation.get_message_text("version-code-must-be-integer").format(config.MAX_VERSION_CODE)
         return await message.answer(text)
 
+    if order.update_tag is not None and version_code < order.app_version_code:
+        text = localisation.get_message_text("version-code-must-be-greater-than-previous").format(order.app_version_code - 1)
+        return await message.answer(text)
+
+    order.app_version_code = version_code
+
     await clear_buttons_from_messages(user_id)
     orders.update_order(order)
-    orders.update_order_status(order, get_next_status(order.status))
+    orders.update_order_status(order, get_next_status(order))
     return await status_observer.on_status_changed(order, localisation)
 
 
@@ -968,7 +1014,7 @@ async def customize_notification_color(call: types.CallbackQuery) -> types.Messa
     order.app_notification_color = PrimaryColor.get_color_by_name(color_name).value
 
     orders.update_order(order)
-    orders.update_order_status(order, get_next_status(order.status))
+    orders.update_order_status(order, get_next_status(order))
     return await status_observer.on_status_changed(order, localisation)
 
 
@@ -986,7 +1032,7 @@ async def customize_notification_text(message: types.Message) -> types.Message:
     order = orders.get_user_order(user_id)
     order.app_notification_text = message.text
     orders.update_order(order)
-    orders.update_order_status(order, get_next_status(order.status))
+    orders.update_order_status(order, get_next_status(order))
 
     return await status_observer.on_status_changed(order, localisation)
 
@@ -1003,7 +1049,7 @@ async def customize_permissions(call: types.CallbackQuery) -> types.Message:
     order_permissions: list[str] = order.permissions.split(",")
 
     if call.data == "permission_continue":
-        orders.update_order_status(order, get_next_status(order.status))
+        orders.update_order_status(order, get_next_status(order))
         await call.answer()
         await clear_buttons_from_messages(user_id)
         return await status_observer.on_status_changed(order, localisation)
@@ -1039,18 +1085,18 @@ async def process_failure(call: types.CallbackQuery) -> types.Message:
 
     order = orders.get_user_order(user_id)
     if call.data == 'retry_build':
-        order.status = get_next_status(order.status, "retry")
+        order.status = get_next_status(order, "retry")
         order.record_created = datetime.now().astimezone(pytz.utc)
         order.priority = get_order_priority(user_id)
         orders.update_order(order)
         return await status_observer.on_status_changed(order, localisation)
     else:
         orders.remove_order(order.id)
-        return await send_cancelled_message(call)
+        return await send_cancelled_message(call, order)
 
 
 @dp.message(
-    partial(on_order_status, orders, [OrderStatus.queued])
+    partial(on_order_status, orders, [OrderStatus.queued, OrderStatus.get_sources_queued])
 )
 @log_exceptions
 @auto_delete_messages
@@ -1098,7 +1144,7 @@ async def process_source_code(call: types.CallbackQuery) -> types.Message:
 
     order = orders.get_user_order(user_id)
     order.sources_only = True
-    order.status = get_next_status(order.status, "get_sources")
+    order.status = get_next_status(order, "get_sources")
     orders.update_order(order)
     return await status_observer.on_status_changed(order, localisation)
 

@@ -83,7 +83,7 @@ def receive_order(worker: Worker):
     new_order = orders.get_order_for_build()
     if new_order is None:
         return jsonify(new_order), 200
-    new_order.status = get_next_status(new_order.status)
+    new_order.status = get_next_status(new_order)
     new_order.worker_id = worker.id
     orders.update_order(new_order)
     workers.update_worker_online(worker.id)
@@ -120,7 +120,7 @@ def order_completed(worker: Worker):
     file = request.files['file']
     file.save(filepath)
     previous_order.build_attempts += 1
-    previous_order.status = get_next_status(previous_order.status, "success")
+    previous_order.status = get_next_status(previous_order, "success")
     previous_order.worker_id = None
     orders.update_order(previous_order)
     increase_user_build_stats(previous_order.user_id, successful=True)
@@ -136,7 +136,7 @@ def order_failed(worker: Worker):
     if previous_order is None:
         return jsonify({"error": "Build did not start"}), 400
     previous_order.build_attempts += 1
-    previous_order.status = get_next_status(previous_order.status, "fail")
+    previous_order.status = get_next_status(previous_order, "fail")
     previous_order.worker_id = None
     orders.update_order(previous_order)
     if request.json is not None and "error_text" in request.json:
@@ -181,7 +181,7 @@ def sources_only_order_completed(worker: Worker):
     )
     file = request.files['file']
     file.save(filepath)
-    order.status = get_next_status(order.status)
+    order.status = get_next_status(order)
     orders.update_order(order)
     return "", 204
 

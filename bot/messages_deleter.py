@@ -97,7 +97,7 @@ class MessagesDeleter:
         order = self.orders.get_user_order(user_id)
         if order is None:
             return config.DELETE_MESSAGES_WITHOUT_ORDERS_AFTER_SEC
-        elif order.status in (STATUSES_BUILDING + STATUSES_GETTING_SOURCES + [OrderStatus.queued]):
+        elif order.status in (STATUSES_BUILDING + STATUSES_GETTING_SOURCES + [OrderStatus.queued, OrderStatus.update_queued]):
             return None
         elif order.status in STATUSES_FINISHED:
             return config.DELETE_MESSAGES_WITH_FINISHED_ORDERS_AFTER_SEC

@@ -86,11 +86,18 @@ class OrderStatusObserver:
             return await self.send_ask_permissions(order, localisation)
         elif status == OrderStatus.confirmation:
             return await self.send_order_confirmation_request(order, localisation)
+        elif status == OrderStatus.update_confirmation:
+            return await self.send_update_order_confirmation_request(order, localisation)
         elif status == OrderStatus.queued:
             increase_queued_count()
             if order.priority > 1:
                 increase_queued_low_priority_count()
             return await self.send_order_queued_notification(order, localisation)
+        elif status == OrderStatus.update_queued:
+            increase_queued_count()
+            if order.priority > 1:
+                increase_queued_low_priority_count()
+            return await self.send_order_update_queued_notification(order, localisation)
         elif status == OrderStatus.build_started:
             increase_build_start_count()
             increase_screen_stats(order.app_masked_passcode_screen)
@@ -189,7 +196,8 @@ class OrderStatusObserver:
             order.user_id,
             "\n\n".join((
                 localisation.get_message_text("request-generated"),
-                self.format_request_confirmation(order, localisation)
+                self.format_current_app_settings(order, localisation),
+                self.format_you_may_not_understand_settings(localisation)
             )),
             reply_markup = self.build_request_confirmation_keyboard_markup(localisation),
         )
@@ -316,8 +324,38 @@ class OrderStatusObserver:
         MessagesDeleter.deleter.add_message(photo_message)
         return await self.bot.send_message(
             order.user_id,
-            self.format_request_confirmation(order, localisation),
+            "\n\n".join((
+                self.format_current_app_settings(order, localisation),
+                self.format_you_may_not_understand_settings(localisation)
+            )),
             reply_markup = self.build_request_confirmation_keyboard_markup(localisation),
+        )
+
+    async def send_update_order_confirmation_request(self, order: Order, localisation: Localisation):
+        await self.bot.send_chat_action(order.user_id, "upload_photo")
+        photo_message = await self.bot.send_photo(
+            order.user_id,
+            photo=types.BufferedInputFile(file=ScreenshotMaker(order).make_full_screen_example(), filename=''),
+        )
+        MessagesDeleter.deleter.add_message(photo_message)
+        inline_keyboard = [
+            [
+                types.InlineKeyboardButton(
+                    text=localisation.get_message_text("start-build"),
+                    callback_data="generated_confirm"
+                ),
+            ],
+            [
+                types.InlineKeyboardButton(
+                    text=localisation.get_message_text("customize-settings"),
+                    callback_data="generated_customize"
+                ),
+            ],
+        ]
+        return await self.bot.send_message(
+            order.user_id,
+            self.format_current_app_settings(order, localisation),
+            reply_markup = types.InlineKeyboardMarkup(inline_keyboard=inline_keyboard),
         )
 
     async def send_order_queued_notification(self, order: Order, localisation: Localisation) -> types.Message:
@@ -328,9 +366,18 @@ class OrderStatusObserver:
             text += localisation.get_message_text("low-priority")
         return await self.bot.send_message(order.user_id, text)
 
+    async def send_order_update_queued_notification(self, order: Order, localisation: Localisation) -> types.Message:
+        queue_order_count = self.orders.get_order_queue_position(order)
+        text = localisation.get_message_text("queued").format(queue_order_count)
+        if order.priority > 1:
+            text += "\n\n" + localisation.get_message_text("low-priority")
+        text += "\n\n" + localisation.get_message_text("you-can-change-update-order")
+
+        return await self.bot.send_message(order.user_id, text)
+
     async def send_build_started_notification(self, order: Order, localisation: Localisation) -> types.Message:
         response = await self.bot.send_message(order.user_id, localisation.get_message_text("build-started"))
-        self.orders.update_order_status(order, get_next_status(order.status, "notified"))
+        self.orders.update_order_status(order, get_next_status(order, "notified"))
         return response
 
     async def send_apk(self, order: Order, localisation: Localisation) -> types.Message:
@@ -409,12 +456,17 @@ class OrderStatusObserver:
             )
         ]])
 
+        if order and order.update_tag:
+            message_prefix = f"#update-request-failed-{order.update_tag}\n\n"
+        else:
+            message_prefix = ""
+
         response = await self.bot.send_message(
             order.user_id,
-            localisation.get_message_text("build-failed"),
+            message_prefix + localisation.get_message_text("build-failed"),
             reply_markup=markup
         )
-        self.orders.update_order_status(order, get_next_status(order.status))
+        self.orders.update_order_status(order, get_next_status(order))
         return response
 
     @staticmethod
@@ -428,7 +480,7 @@ class OrderStatusObserver:
         return types.InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
     @staticmethod
-    def format_request_confirmation(order: Order, localisation: Localisation) -> str:
+    def format_current_app_settings(order: Order, localisation: Localisation) -> str:
         available_permissions = [permission
                                  for permission in order.permissions.split(",")
                                  if permission != ""]
@@ -437,7 +489,7 @@ class OrderStatusObserver:
                                    for permission in AndroidAppPermission
                                    if permission not in available_permissions]
 
-        return localisation.get_message_text("request-confirmation").format(
+        return localisation.get_message_text("current-app-settings").format(
             order.app_masked_passcode_screen,
             OrderStatusObserver.truncate(order.app_name, 100),
             OrderStatusObserver.truncate(order.app_id, 100),
@@ -448,6 +500,13 @@ class OrderStatusObserver:
             OrderStatusObserver.format_permission_list(unavailable_permissions, localisation),
             PrimaryColor.get_color_by_value(order.app_notification_color).localize(localisation),
 
+            localisation.get_message_text("customize-settings"),
+            localisation.get_message_text("start-build"),
+        )
+
+    @staticmethod
+    def format_you_may_not_understand_settings(localisation: Localisation) -> str:
+        return localisation.get_message_text("you-may-not-understand-settings").format(
             localisation.get_message_text("customize-settings"),
             localisation.get_message_text("start-build"),
         )

@@ -23,7 +23,7 @@ def fail_stuck_builds(orders: OrdersCRUD):
         for order in orders.get_orders_by_status(status):
             print(f"Cleaning building status for order {order.id}")
             order.worker_id = None
-            order.status = get_next_status(order.status, "repeat")
+            order.status = get_next_status(order, "repeat")
             orders.update_order(order)
 
 
@@ -39,7 +39,7 @@ def reset_build_status_for_offline_workers(orders: OrdersCRUD):
         worker = workers.get_worker(order.worker_id)
         if datetime.now() - worker.last_online_date > timedelta(seconds=config.CONSIDER_WORKER_OFFLINE_AFTER_SEC):
             print(f"Worker {worker.id} is offline for order {order.id}", datetime.now() - worker.last_online_date)
-            order.status = get_next_status(order.status, "repeat")
+            order.status = get_next_status(order, "repeat")
             order.worker_id = None
             orders.update_order(order)
 

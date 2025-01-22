@@ -5,6 +5,7 @@ import shutil
 import traceback
 
 from aiogram import types, Bot
+from aiogram.exceptions import TelegramForbiddenError
 
 import config
 import utils
@@ -29,15 +30,17 @@ class BuildResultSender:
         logging.info(f"Sending build result for order #{order.id}")
         try:
             await self.try_send_build_result(order)
-            order.status = get_next_status(order.status)
+            order.status = get_next_status(order)
             self.orders.update_order(order)
             MessagesDeleter.deleter.add_message(await self.status_observer.on_status_changed(order))
             delete_sending_apk_attempt_count(order.id)
+        except TelegramForbiddenError:
+            self.orders.remove_order(order.id)
         except BaseException as e:
             from .bot import send_error
-            logging.error(f"Failed to send build result: {e}")
+            logging.error(f"Failed to send build result for order #{order.id}: {e}")
             exception_text = traceback.format_exc()
-            await send_error(f"Failed to send build result:\n\n{exception_text}")
+            await send_error(f"Failed to send build result#{order.id}:\n\n{exception_text}")
             traceback.print_exc()
             increase_sending_apk_attempt_count(order.id)
             await self.check_attempt_count(order)
@@ -45,19 +48,19 @@ class BuildResultSender:
     async def check_attempt_count(self, order: Order):
         count = get_sending_apk_attempt_count(order.id)
         if count < config.APK_SEND_MAX_RETRY_COUNT:
-            order.status = get_next_status(order.status, "repeat")
+            order.status = get_next_status(order, "repeat")
             self.orders.update_order(order)
             MessagesDeleter.deleter.add_message(await self.status_observer.on_status_changed(order))
         else:
             delete_sending_apk_attempt_count(order.id)
-            order.status = get_next_status(order.status, "fail")
+            order.status = get_next_status(order, "fail")
             self.orders.update_order(order)
             MessagesDeleter.deleter.add_message(await self.status_observer.on_status_changed(order))
             from .bot import send_error
             await send_error(f"Apk didn't sent after {config.APK_SEND_MAX_RETRY_COUNT} attempts")
 
     async def try_send_build_result(self, order: Order) -> bool:
-        order.status = get_next_status(order.status, "send_result")
+        order.status = get_next_status(order, "send_result")
         await self.bot.send_chat_action(order.user_id, "upload_document")
         self.orders.update_order(order)
         MessagesDeleter.deleter.add_message(await self.status_observer.on_status_changed(order))

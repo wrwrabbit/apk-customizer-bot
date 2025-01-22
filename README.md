@@ -43,6 +43,7 @@ FAILED_BUILD_COUNT_ALLOWED=1
 DELETE_USER_BUILD_STATS_AFTER_SEC=5
 UPDATES_ALLOWED=True
 SET_BOT_NAME_AND_DESCRIPTION=False
+DELAY_BEFORE_UPDATE_ORDER_BUILD_SEC=60
 ```
 
 Copy all files with `.example` to the same location and remove `.example` suffix from the filename.

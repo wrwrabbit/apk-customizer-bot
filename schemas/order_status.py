@@ -1,6 +1,8 @@
 from enum import Enum
 from typing import Optional, Union
 
+import models
+
 
 class OrderStatus(str, Enum):
     app_masked_passcode_screen = "app_masked_passcode_screen"
@@ -30,6 +32,8 @@ class OrderStatus(str, Enum):
     getting_sources_successfully_finished = "getting_sources_successfully_finished"
     failed = "failed"
     failed_notified = "failed_notified"
+    update_queued = "update_queued"
+    update_confirmation = "update_confirmation"
 
 STATUSES_BUILDING = [
     OrderStatus.build_started,
@@ -60,6 +64,7 @@ STATUSES_CONFIGURING = [
     OrderStatus.app_notification_icon,
     OrderStatus.app_permissions,
     OrderStatus.confirmation,
+    OrderStatus.update_confirmation,
 ]
 
 STATUSES_FINISHED = [
@@ -77,7 +82,7 @@ _STATUS_TRANSITIONS: dict[OptionalOrderStatus, StatusTransition] = {
     OrderStatus.app_masked_passcode_screen: {None: OrderStatus.generated, "show_advanced_screens": OrderStatus.app_masked_passcode_screen_advanced},
     OrderStatus.app_masked_passcode_screen_advanced: {None: OrderStatus.generated, "back": OrderStatus.app_masked_passcode_screen},
     OrderStatus.generated: {"confirm": OrderStatus.queued, "customize_app_name_only": OrderStatus.app_name_only, "customize_app_icon_only": OrderStatus.app_icon_only, "customize": OrderStatus.app_name},
-    OrderStatus.app_name: OrderStatus.app_id,
+    OrderStatus.app_name: {None: OrderStatus.app_id, "#update": OrderStatus.app_icon},
     OrderStatus.app_name_only: OrderStatus.confirmation,
     OrderStatus.app_id: OrderStatus.app_icon,
     OrderStatus.app_icon: OrderStatus.app_version_name,
@@ -87,7 +92,7 @@ _STATUS_TRANSITIONS: dict[OptionalOrderStatus, StatusTransition] = {
     OrderStatus.app_notification_color: OrderStatus.app_notification_text,
     OrderStatus.app_notification_text: OrderStatus.app_notification_icon,
     OrderStatus.app_notification_icon: OrderStatus.app_permissions,
-    OrderStatus.app_permissions: OrderStatus.confirmation,
+    OrderStatus.app_permissions: {None: OrderStatus.confirmation, "#update": OrderStatus.update_confirmation},
     OrderStatus.confirmation: {"confirm": OrderStatus.queued, "customize_app_name_only": OrderStatus.app_name_only, "customize_app_icon_only": OrderStatus.app_icon_only, "customize": OrderStatus.app_name},
     OrderStatus.queued: OrderStatus.build_started,
     OrderStatus.build_started: {"notified": OrderStatus.building, "repeat": OrderStatus.queued, "fail": OrderStatus.failed, "success": OrderStatus.built},
@@ -96,14 +101,18 @@ _STATUS_TRANSITIONS: dict[OptionalOrderStatus, StatusTransition] = {
     OrderStatus.sending_apk: {None: OrderStatus.successfully_finished, "repeat": OrderStatus.built, "fail": OrderStatus.failed},
     OrderStatus.successfully_finished: {None: None, "get_sources": OrderStatus.get_sources_queued},
     OrderStatus.get_sources_queued: OrderStatus.sources_downloaded,
-    OrderStatus.sources_downloaded: {"send_result": OrderStatus.sending_sources},
+    OrderStatus.sources_downloaded: {"send_result": OrderStatus.sending_sources, "repeat": OrderStatus.sources_downloaded},
     OrderStatus.sending_sources: OrderStatus.getting_sources_successfully_finished,
     OrderStatus.getting_sources_successfully_finished: None,
     OrderStatus.failed: OrderStatus.failed_notified,
-    OrderStatus.failed_notified: {"retry": OrderStatus.queued, "cancel": None}
+    OrderStatus.failed_notified: {"retry": OrderStatus.queued, "cancel": None},
+    OrderStatus.update_queued: {None: OrderStatus.build_started, "customize": OrderStatus.app_name},
+    OrderStatus.update_confirmation: {"confirm": OrderStatus.queued, "customize": OrderStatus.app_name},
 }
 
-def get_next_status(status: OptionalOrderStatus, transition_name: Optional[str] = None) -> OptionalOrderStatus:
+
+def get_next_status(order: Optional['models.Order'], transition_name: Optional[str] = None) -> OptionalOrderStatus:
+    status: Optional[OrderStatus] = order.status if order else None
     transitions = _STATUS_TRANSITIONS[status]
     if isinstance(transitions, OrderStatus):
         if transition_name is None:
@@ -112,6 +121,10 @@ def get_next_status(status: OptionalOrderStatus, transition_name: Optional[str] 
             raise Exception(f"Can't get next status. Provided transition name {transition_name}," +
                             f" but status '{status}' doesn't require transition name.")
     elif isinstance(transitions, dict):
+        if order is not None and order.update_tag is not None:
+            update_transition_name = f"{str(transition_name or '')}#update"
+            if update_transition_name in transitions:
+                return transitions[update_transition_name]
         if transition_name in transitions:
             return transitions[transition_name]
         elif transition_name is not None:

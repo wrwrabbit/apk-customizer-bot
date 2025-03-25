@@ -33,7 +33,7 @@ from bot.order_generator import OrderGenerator
 from bot.order_validator import validate_order, validate_app_id
 from bot.primary_color import PrimaryColor
 from bot.stats import increase_start_count, increase_configuration_start_count, increase_update_start_count, \
-    increase_cancel_count, period_stats, uptime_stats
+    increase_cancel_count, format_stats, increase_selected_screen_stats
 from bot.stats_sender import StatsSender
 from crud.user_build_stats_crud import UserBuildStatsCRUD
 from db import engine
@@ -72,6 +72,7 @@ stats_sender: Optional[StatsSender] = None
 
 password_hasher = PasswordHasher()
 graceful_shutdown_in_progress = False
+temporary_maintenance = False
 
 
 async def start():
@@ -276,9 +277,8 @@ async def send_stats(chat_id: int) -> types.Message:
                          f"- Update Queue: {count_of_orders_update_queue}\n" + \
                          f"- Building: {count_of_orders_building}\n" + \
                          f"- Finished: {count_of_orders_finished}"
-    period_stats_text = f"<b>Period Stats</b>:\n{period_stats.format()}"
-    uptime_stats_text = f"<b>Uptime Stats</b>:\n{uptime_stats.format()}"
-    text = "\n\n".join([current_stats_text, period_stats_text, uptime_stats_text])
+    stats_text = f"<b>Stats</b>:\n{format_stats()}"
+    text = "\n\n".join([current_stats_text, stats_text])
     return await bot.send_message(chat_id, text)
 
 
@@ -292,12 +292,16 @@ async def clear_buttons_from_messages(user_id: int):
     clear_messages_with_buttons_list(user_id)
 
 
+def bot_is_undergoing_maintenance():
+    return graceful_shutdown_in_progress or temporary_maintenance
+
+
 @dp.message(Command(commands=['start']))
 @auto_delete_messages
 async def start_command(message: types.Message) -> types.Message:
     user_id = message.from_user.id
     localisation = TemporaryInfo.get_localisation(message)
-    if graceful_shutdown_in_progress:
+    if bot_is_undergoing_maintenance():
         return await message.answer(localisation.get_message_text("bot-maintenance"))
 
     increase_start_count()
@@ -386,7 +390,7 @@ async def create_order(call: types.CallbackQuery) -> types.Message:
     await clear_buttons_from_messages(user_id)
     remove_previous_order_if_finished(user_id)
 
-    if graceful_shutdown_in_progress:
+    if bot_is_undergoing_maintenance():
         return await call.message.answer(localisation.get_message_text("bot-maintenance"))
 
     increase_configuration_start_count()
@@ -509,6 +513,20 @@ async def delete_worker_command(message: types.Message) -> types.Message:
 
     workers.remove_worker(worker.id)
     return await message.answer("Removed")
+
+
+@dp.message(
+    Command(commands=['worker_list']),
+    F.chat.func(lambda chat: chat.id == config.ADMIN_CHAT_ID)
+)
+@log_exceptions
+async def worker_list_command(message: types.Message) -> types.Message:
+    text = "\n".join(workers.get_all_worker_names())
+    if text:
+        escaped_text = formatting.Text(text)
+        return await message.answer(**escaped_text.as_kwargs())
+    else:
+        return await message.answer("<i>empty</i>")
 
 
 @dp.message(
@@ -640,9 +658,23 @@ def extract_command_args(command: str) -> list[str]:
 async def graceful_shutdown_command(message: types.Message) -> types.Message:
     global graceful_shutdown_in_progress
     graceful_shutdown_in_progress = True
-    await message.answer("Bot stop started")
+    message = await message.answer("Bot stop started")
     if orders.get_orders_count() == 0:
         gracefully_stop_bot()
+    return message
+
+
+@dp.message(
+    Command(commands=['maintenance']),
+    F.chat.func(lambda chat: chat.id == config.ADMIN_CHAT_ID)
+)
+@log_exceptions
+async def maintenance_command(message: types.Message) -> types.Message:
+    global temporary_maintenance
+    command_args = extract_command_args(message.text)
+    if command_args:
+        temporary_maintenance = command_args[0].lower() in ("true", "1", "t")
+    return await message.answer("Maintenance = " + str(temporary_maintenance))
 
 
 @dp.message(
@@ -652,6 +684,16 @@ async def graceful_shutdown_command(message: types.Message) -> types.Message:
 @log_exceptions
 async def stats_command(message: types.Message) -> types.Message:
     return await send_stats(message.from_user.id)
+
+
+@dp.message(
+    Command(commands=['reset_period_stats']),
+    F.chat.func(lambda chat: chat.id == config.ADMIN_CHAT_ID)
+)
+@log_exceptions
+async def reset_period_stats_command(message: types.Message) -> types.Message:
+    stats_sender.reset()
+    return None
 
 
 @dp.callback_query(
@@ -677,6 +719,8 @@ async def customize_masked_passcode_screen(call: types.CallbackQuery) -> types.M
     OrderGenerator(order, localisation).generate_order_values(masked_screen_name)
     orders.update_order(order)
     orders.update_order_status(order, get_next_status(order))
+
+    increase_selected_screen_stats(masked_screen_name)
 
     return await status_observer.on_status_changed(order, localisation)
 

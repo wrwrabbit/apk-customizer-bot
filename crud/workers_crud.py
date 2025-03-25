@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Iterator
 
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
@@ -48,4 +49,12 @@ class WorkersCRUD:
         q = sa.select(*Worker.__table__.c).where(Worker.name == name)
         row = self.session.execute(q).fetchone()
         return Worker(**row) if row else None
+
+    def get_all_worker_names(self) -> Iterator[str]:
+        q = sa.select(Worker.name)
+        self.session.execute(q).fetchall()
+        records = self.session.execute(q).fetchall()
+
+        for record in records:
+            yield record[0]
 

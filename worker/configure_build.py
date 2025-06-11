@@ -35,6 +35,7 @@ class BuildConfigurator:
         self.save_update_request_template()
 
     def update_text_sources(self) -> None:
+        self.copy_version()
         self.update_permissions()
         self.update_text_source_file(
             relative_path="TMessagesProj/src/main/res/values*/strings.xml", search_by_path=True,
@@ -115,6 +116,22 @@ class BuildConfigurator:
                 src=r'(?<=private static final Integer PRIMARY_COLOR = )null(?=;)',
                 dst=f"0xff{self.order.app_notification_color:0>6x}",
             )
+
+    def copy_version(self):
+        with open(self.build_absolute_path("gradle.properties"), "rt") as file:
+            content = file.read()
+            version_code = re.findall("(?<=APP_VERSION_CODE=)\d+", content)[0]
+            version_name = re.findall("(?<=APP_VERSION_NAME=).+", content)[0]
+        self.update_text_source_file(
+            relative_path="TMessagesProj/src/main/java/org/telegram/messenger/partisan/masked_ptg/OriginalVersion.java",
+            src=r'(?<=public static final String ORIGINAL_VERSION_STRING = )null(?=;)',
+            dst=f'"{version_name}"'
+        )
+        self.update_text_source_file(
+            relative_path="TMessagesProj/src/main/java/org/telegram/messenger/partisan/masked_ptg/OriginalVersion.java",
+            src=r'(?<=public static final Integer ORIGINAL_BUILD_VERSION = )null(?=;)',
+            dst=f'{version_code}2' # '2' is the code of 'store bundled' version
+        )
 
     def update_permissions(self):
         permissions_mapping = {

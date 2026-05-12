@@ -76,10 +76,10 @@ class BuildResultSender:
         else:
             tg_filename = f'update-{order.update_tag}.apk'  # clients will expect a filename in this format
 
-        future = self.bot.send_document(
+        future = asyncio.create_task(self.bot.send_document(
             order.user_id,
             document=types.FSInputFile(path=filepath, filename=tg_filename)
-        )
+        ))
         sending_result = await asyncio.wait((future,), timeout=1800)
         response = next(iter(sending_result[0])).result()
         MessagesDeleter.deleter.add_message(response)

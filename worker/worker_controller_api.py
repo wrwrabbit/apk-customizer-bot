@@ -43,7 +43,7 @@ class WorkerControllerApi:
             if response.status_code != 204:
                 self.log_response("Keep alive:", response)
         except Exception as e:
-            logging.error(f"During send_keep_alive the following exception occurred:", e)
+            logging.error(f"During send_keep_alive the following exception occurred: {e}")
             traceback.print_exc()
 
     def receive_order(self) -> Optional[Order]:
@@ -57,7 +57,7 @@ class WorkerControllerApi:
             values = response.json()
             return Order.create_order_from_dict(values) if values is not None else None
         except Exception as e:
-            logging.error(f"During receive_order the following exception occurred:", e)
+            logging.error(f"During receive_order the following exception occurred: {e}")
             traceback.print_exc()
             return None
 
@@ -69,7 +69,7 @@ class WorkerControllerApi:
             values = response.json()
             return Order.create_order_from_dict(values) if values is not None else None
         except Exception as e:
-            logging.error(f"During receive_order the following exception occurred:", e)
+            logging.error(f"During receive_order the following exception occurred: {e}")
             traceback.print_exc()
             return None
 

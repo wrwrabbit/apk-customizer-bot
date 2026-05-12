@@ -1,4 +1,4 @@
-FROM python:3.9.13-buster
+FROM python:3.14-slim
 
 ENV WORKDIR_PATH /usr/src/app
 ENV DOCKER 1
@@ -15,7 +15,7 @@ RUN apt-get update && \
     curl -sSL https://get.docker.com/ | sh
 
 RUN apt-get update && \
-    apt-get install -y openjdk-11-jre-headless && \
+    apt-get install -y openjdk-25-jre-headless && \
     apt-get clean
 
 COPY ./Pipfile* ./

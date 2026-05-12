@@ -1,6 +1,6 @@
-from enum import Enum
+from enum import StrEnum
 
-class AndroidAppPermission(str, Enum):
+class AndroidAppPermission(StrEnum):
     camera = "camera"
     location = "location"
     microphone = "microphone"

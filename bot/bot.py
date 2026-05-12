@@ -491,7 +491,7 @@ async def add_worker_command(message: types.Message) -> types.Message:
     except:
         return await message.answer("Database error")
 
-    jwt_payload = {"sub": worker_id}
+    jwt_payload = {"sub": str(worker_id)}
     token = jwt.encode(payload=jwt_payload, key=config.JWT_SECRET_KEY)
     return await message.answer(token)
 

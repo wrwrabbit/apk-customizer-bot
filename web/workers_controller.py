@@ -41,7 +41,11 @@ def check_worker_id(fun: Callable):
     @wraps(fun)
     def wrapper():
         worker_id = get_jwt_identity()
-        worker = workers.get_worker(worker_id) if isinstance(worker_id, int) else None
+        try:
+            worker_id_int = int(worker_id)
+        except (TypeError, ValueError):
+            worker_id_int = None
+        worker = workers.get_worker(worker_id_int) if worker_id_int is not None else None
         if not worker or (worker.ip and worker.ip != request.remote_addr):
             return jsonify(msg="Signature verification failed"), 422
         return fun(worker)

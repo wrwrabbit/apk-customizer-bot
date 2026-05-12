@@ -1,10 +1,10 @@
-from enum import Enum
+from enum import StrEnum
 from typing import Optional, Union
 
 import models
 
 
-class OrderStatus(str, Enum):
+class OrderStatus(StrEnum):
     app_masked_passcode_screen = "app_masked_passcode_screen"
     app_masked_passcode_screen_advanced = "app_masked_passcode_screen_advanced"
     generated = "generated"

@@ -120,7 +120,7 @@ class BuildConfigurator:
     def copy_version(self):
         with open(self.build_absolute_path("gradle.properties"), "rt") as file:
             content = file.read()
-            version_code = re.findall("(?<=APP_VERSION_CODE=)\d+", content)[0]
+            version_code = re.findall("(?<=APP_VERSION_CODE=)\\d+", content)[0]
             version_name = re.findall("(?<=APP_VERSION_NAME=).+", content)[0]
         self.update_text_source_file(
             relative_path="TMessagesProj/src/main/java/org/telegram/messenger/partisan/masked_ptg/OriginalVersion.java",

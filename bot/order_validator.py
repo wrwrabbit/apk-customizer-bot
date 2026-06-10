@@ -22,7 +22,7 @@ def validate_order(order: Order) -> bool:
             and validate_string(order.app_notification_text)
             and validate_permissions(order.permissions)
             and validate_keystore(order.keystore)
-            and validate_string(order.keystore_password_salt)
+            and validate_keystore_password_salt(order.keystore_password_salt)
             and validate_update_tag(order.update_tag))
 
 
@@ -68,6 +68,9 @@ def validate_keystore(keystore) -> bool:
     if not isinstance(keystore, bytes) or len(keystore) > config.FILE_SIZE_LIMIT:
         return False
     return True
+
+def validate_keystore_password_salt(salt) -> bool:
+    return isinstance(salt, str) and re.fullmatch(r'[A-Za-z]{1,64}', salt) is not None
 
 def validate_update_tag(update_tag) -> bool:
     return isinstance(update_tag, str) and len(update_tag) == 32 and all([c in "0123456789ABCDEF" for c in update_tag])

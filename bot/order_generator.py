@@ -122,7 +122,7 @@ class OrderGenerator:
         keystore_dir = os.path.join(config.TMP_DIR, "keystores", str(self.order.id))
         os.makedirs(keystore_dir, exist_ok=True)
         keystore_path = os.path.join(keystore_dir, "release.keystore")
-        subprocess.run(self.generate_keytool_command(keystore_path), shell=True, encoding="utf-8")
+        subprocess.run(self.generate_keytool_command(keystore_path), encoding="utf-8")
         with open(keystore_path, "rb") as f:
             self.order.keystore = f.read()
         shutil.rmtree(keystore_dir)
@@ -133,16 +133,25 @@ class OrderGenerator:
         salt_chars = [self.random.choice(possible_chars) for _ in range(0, size)]
         return "".join(salt_chars)
 
-    def generate_keytool_command(self, keystore_path: str):
+    def generate_keytool_command(self, keystore_path: str) -> list[str]:
         start_date = datetime.now() - timedelta(seconds=self.random.randint(0, keystore_sources.max_key_age))
         start_date_str = start_date.strftime("%Y/%m/%d %H:%M:%S")
         validity = self.random.choice(keystore_sources.key_validity_options)
         key_size = self.random.choice(keystore_sources.key_size_options)
         full_keystore_password = self.order.keystore_password_salt + config.KEYSTORE_PASSWORD + self.order.keystore_password_salt
-        return (f'keytool -genkey -keystore {keystore_path} -deststoretype JKS -keyalg RSA -keysize {key_size} '
-                f'-startdate "{start_date_str}" -validity {validity} -alias key0' +
-                f' -dname "{self.generate_distinguished_name_for_keystore()}"' +
-                f' -storepass {full_keystore_password} -keypass {full_keystore_password}')
+        return [
+            "keytool", "-genkey",
+            "-keystore", keystore_path,
+            "-deststoretype", "JKS",
+            "-keyalg", "RSA",
+            "-keysize", str(key_size),
+            "-startdate", start_date_str,
+            "-validity", str(validity),
+            "-alias", "key0",
+            "-dname", self.generate_distinguished_name_for_keystore(),
+            "-storepass", full_keystore_password,
+            "-keypass", full_keystore_password,
+        ]
 
     def generate_distinguished_name_for_keystore(self):
         full_name = names.get_full_name()

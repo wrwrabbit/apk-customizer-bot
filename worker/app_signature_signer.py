@@ -23,12 +23,18 @@ def extract_and_sign_app_signature(keystore_path: str, keystore_pass: str):
 
 def _extract_thumbprint_from_keystore(keystore_path: str, key_alias: str, store_pass: str, key_pass: str) -> str:
     result = subprocess.run(
-        f"keytool -list -v -keystore {keystore_path} -alias {key_alias} -storepass {store_pass} -keypass {key_pass}",
+        [
+            "keytool", "-list", "-v",
+            "-keystore", keystore_path,
+            "-alias", key_alias,
+            "-storepass", store_pass,
+            "-keypass", key_pass,
+        ],
         capture_output=True,
-        shell=True,
         encoding="utf-8")
-    output = result.stdout
-    match = re.search(r'''SHA256: ((?:[\dABCDEF]{2}:){31}[\dABCDEF]{2})''', output) # SHA256: A1:B2:C3:D4...
+    match = re.search(r'''SHA256: ((?:[\dABCDEF]{2}:){31}[\dABCDEF]{2})''', result.stdout) # SHA256: A1:B2:C3:D4...
+    if match is None:
+        raise RuntimeError(f"Failed to read SHA256 thumbprint from keystore (keytool exit {result.returncode})")
     return match[1].replace(':', '')
 
 

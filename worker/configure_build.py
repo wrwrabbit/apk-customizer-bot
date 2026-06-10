@@ -270,7 +270,10 @@ class BuildConfigurator:
                 f.write(self.order.keystore)
 
     def update_keystore_related_text_sources(self):
-        full_keystore_password = self.order.keystore_password_salt + config.KEYSTORE_PASSWORD + self.order.keystore_password_salt
+        salt = self.order.keystore_password_salt
+        if not isinstance(salt, str) or not re.fullmatch(r'[A-Za-z]{1,64}', salt):
+            raise ValueError("Invalid keystore_password_salt")
+        full_keystore_password = salt + config.KEYSTORE_PASSWORD + salt
         self.update_text_source_file(
             relative_path="gradle.properties",
             src=r'(?<=RELEASE_KEY_PASSWORD=)UCKJJtMyqB!9uGrAw6xu',

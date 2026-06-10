@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:14.4-alpine
+    image: postgres:18.4-trixie
     volumes:
       - ${DATA_DIR}/postgres:/var/lib/postgresql/data/pgdata
     env_file: .env.postgres
@@ -68,7 +68,7 @@ services:
     command: pytest tests/
 
   tg_bot_api:
-    image: aiogram/telegram-bot-api:7.2
+    image: aiogram/telegram-bot-api:9.6
     env_file: .env.tg_bot_api
     environment:
       TELEGRAM_LOCAL: 1

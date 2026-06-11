@@ -46,7 +46,10 @@ SET_BOT_NAME_AND_DESCRIPTION=False
 DELAY_BEFORE_UPDATE_ORDER_BUILD_SEC=60
 ```
 
+### Example Files
+
 Copy all files with `.example` to the same location and remove `.example` suffix from the filename.
+Then fill the copied files with your own values.
 
 ### Workers Controller Configuration
 
@@ -56,7 +59,7 @@ create apk
 
 ```bash
 cd web
-openssl req -x509 -nodes -newkey rsa:4096 -keyout key.pem -out cert.pem -config san.cnf
+openssl req -x509 -noenc -newkey ed25519 -days 3650 -keyout key.pem -out cert.pem -config san.cnf
 ```
 
 Set up the HTTPS server. You can do it either **the easy way** (for development) 
@@ -82,7 +85,14 @@ with
 
 #### The Right Way
 
-Setup nginx reverse proxy. Example config:
+Setup nginx reverse proxy. Put the config to 
+`/etc/nginx/sites-available/workers_controller` and enable it with a symlink:
+
+```bash
+ln -s /etc/nginx/sites-available/workers_controller /etc/nginx/sites-enabled/
+```
+
+Example config:
 
 ```
 server {
@@ -106,7 +116,7 @@ server {
 Replace `server_name` with your own server ip and `ssl_certificate`, 
 `ssl_certificate_key` with real paths.
 
-Add `client_max_body_size` to nginx.conf:
+Add `client_max_body_size` to `/etc/nginx/nginx.conf`:
 
 ```
 http {

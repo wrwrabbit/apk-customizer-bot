@@ -1090,7 +1090,7 @@ async def customize_permissions(call: types.CallbackQuery) -> types.Message:
     localisation = TemporaryInfo.get_localisation(call)
 
     order = orders.get_user_order(user_id)
-    order_permissions: list[str] = order.permissions.split(",")
+    order_permissions: list[str] = [p for p in order.permissions.split(",") if p]
 
     if call.data == "permission_continue":
         orders.update_order_status(order, get_next_status(order))

@@ -62,7 +62,8 @@ def validate_masked_passcode_screen(screen) -> bool:
     return screen in {"calculator", "loading", "note"}
 
 def validate_permissions(permissions) -> bool:
-    return isinstance(permissions, str) and set(permissions.split(",")) <= {p.value for p in AndroidAppPermission}
+    return (isinstance(permissions, str)
+            and set(filter(None, permissions.split(","))) <= {p.value for p in AndroidAppPermission})
 
 def validate_keystore(keystore) -> bool:
     if not isinstance(keystore, bytes) or len(keystore) > config.FILE_SIZE_LIMIT:

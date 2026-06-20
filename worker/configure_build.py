@@ -254,12 +254,13 @@ class BuildConfigurator:
                 for file_name_template in file_names + notification_file_names:
                     file_name = file_name_template.replace('<dpi>', dpi_name)
                     out_path = self.build_absolute_path(file_name)
-                    if os.path.isfile(out_path):
+                    if os.path.isfile(out_path) or Path(out_path).with_suffix('.webp').is_file():
                         with open(out_path, 'wb') as f:
                             if file_name_template in file_names:
                                 icon_copy.save(f)
                             elif file_name_template in notification_file_names:
                                 notification_icon_copy.save(f)
+                        Path(out_path).with_suffix('.webp').unlink(missing_ok=True)
         logging.info("Done replacing icons")
 
     def replace_keystore(self):

@@ -59,7 +59,6 @@ class ApplicationBuilder:
             return
         args = [
             abspath(self.make_order_dir_path()),
-            config.BUILD_DOCKER_IMAGE_NAME
         ]
         with application_builder_critical_lock: # Wait until the repo is updated before terminating the worker.
             try:
@@ -83,9 +82,12 @@ class ApplicationBuilder:
                     self.make_order_dir_path(),
                     "Partisan-Telegram-Android"
                 ),
-                config.BUILD_DOCKER_IMAGE_NAME
+                self.build_docker_image_name()
             ]
             self.run_script("build.sh", args, cwd=abspath(self.make_order_dir_path()))
+
+    def build_docker_image_name(self) -> str:
+        return f"{config.BUILD_DOCKER_IMAGE_NAME}-{self.order.id}"
 
     def run_script(self, script: str, args: list[str], cwd: str):
         subprocess.run(

@@ -62,4 +62,4 @@ BUILD_DOCKER_IMAGE_NAME = os.environ.get("BUILD_DOCKER_IMAGE_NAME", "masked-part
 ALLOW_BUILD_SOURCES_ONLY = os.environ.get("ALLOW_BUILD_SOURCES_ONLY", "True").lower() in ("true", "1", "t")
 
 # Workers Controller
-JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "")
+JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY")

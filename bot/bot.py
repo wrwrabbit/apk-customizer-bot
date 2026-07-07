@@ -50,6 +50,9 @@ from .messages_deleter import MessagesDeleter
 from .temporary_info import add_media_group_token, TemporaryInfo, \
     add_message_with_buttons, get_messages_with_buttons, clear_messages_with_buttons_list
 
+if not config.JWT_SECRET_KEY:
+    raise RuntimeError("JWT_SECRET_KEY environment variable must be set")
+
 os.makedirs(config.TMP_DIR, exist_ok=True)
 
 session = AiohttpSession(

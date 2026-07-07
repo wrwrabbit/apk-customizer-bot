@@ -1,5 +1,4 @@
 import os
-from typing import Any, Optional
 
 from dotenv import load_dotenv
 
@@ -64,15 +63,3 @@ ALLOW_BUILD_SOURCES_ONLY = os.environ.get("ALLOW_BUILD_SOURCES_ONLY", "True").lo
 
 # Workers Controller
 JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "")
-
-def variable_exists(name: str):
-    return name in globals()
-
-def get_variable_by_name(name: str) -> Optional[Any]:
-    if variable_exists(name):
-        return globals()[name]
-    else:
-        return None
-
-def set_variable_by_name(name: str, value: Any):
-    globals()[name] = value

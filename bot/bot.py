@@ -550,55 +550,6 @@ async def add_worker_command(message: types.Message) -> types.Message:
 
 
 @dp.message(
-    Command(commands=['get_config_var']),
-    F.chat.func(lambda chat: chat.id == config.ADMIN_CHAT_ID)
-)
-@log_exceptions
-async def get_config_var_command(message: types.Message) -> types.Message:
-    command_args = message.text.split()[1:]
-    if len(command_args) == 1:
-        name = command_args[0]
-    else:
-        return await message.answer("Invalid usage")
-
-    if not config.variable_exists(name):
-        return await message.answer("There is no variable with this name")
-
-    value = str(config.get_variable_by_name(name))
-    return await message.answer(value)
-
-
-@dp.message(
-    Command(commands=['set_config_var']),
-    F.chat.func(lambda chat: chat.id == config.ADMIN_CHAT_ID)
-)
-@log_exceptions
-async def set_config_var_command(message: types.Message) -> types.Message:
-    command_args = extract_command_args(message.text)
-    if len(command_args) == 2:
-        name = command_args[0]
-        value = command_args[1]
-    else:
-        return await message.answer("Invalid usage")
-
-    if not config.variable_exists(name):
-        return await message.answer("There is no variable with this name")
-
-    old_value = config.get_variable_by_name(name)
-    if old_value is None or isinstance(old_value, str):
-        value = value
-    elif isinstance(old_value, int) and not isinstance(old_value, bool):
-        value = int(value)
-    elif isinstance(old_value, bool):
-        value = value.lower() in ("true", "1", "t")
-    else:
-        return await message.answer("Unknown variable type")
-
-    config.set_variable_by_name(name, value)
-    return await message.answer("Success")
-
-
-@dp.message(
     Command(commands=['get_translation']),
     F.chat.func(lambda chat: chat.id == config.ADMIN_CHAT_ID)
 )

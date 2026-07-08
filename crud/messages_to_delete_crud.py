@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional, Iterator
 
 import sqlalchemy as sa
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from models.message_to_delete import MessageToDelete
@@ -13,19 +13,18 @@ class MessagesToDeleteCRUD:
         self.session = session
 
     def add_message_to_delete(self, message_to_delete: MessageToDelete):
-        try:
-            self.session.execute(
-                sa.insert(MessageToDelete)
-                .values(
-                    {
-                        MessageToDelete.user_id: message_to_delete.user_id,
-                        MessageToDelete.message_id: message_to_delete.message_id,
-                        MessageToDelete.sent_date: message_to_delete.sent_date,
-                    }
-                )
+        q = (
+            pg_insert(MessageToDelete)
+            .values(
+                {
+                    MessageToDelete.user_id: message_to_delete.user_id,
+                    MessageToDelete.message_id: message_to_delete.message_id,
+                    MessageToDelete.sent_date: message_to_delete.sent_date,
+                }
             )
-        except IntegrityError:
-            pass
+            .on_conflict_do_nothing(index_elements=[MessageToDelete.user_id, MessageToDelete.message_id])
+        )
+        self.session.execute(q)
 
     def get_count_of_users(self) -> int:
         q = sa.select([sa.func.count(sa.func.distinct(MessageToDelete.user_id))])

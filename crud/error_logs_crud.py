@@ -1,33 +1,23 @@
 from typing import Optional
 
 import sqlalchemy as sa
-from sqlalchemy.orm import Session
 
+from crud.base_crud import BaseCRUD
 from models import ErrorLog
 
 
-class ErrorLogsCRUD:
-    def __init__(self, session: Session):
-        self.session = session
-
+class ErrorLogsCRUD(BaseCRUD):
     def add_log(self, text: str) -> int:
-        result = self.session.execute(
-            sa.insert(ErrorLog)
-            .values(
-                {
-                    ErrorLog.text: text,
-                }
-            )
-            .returning(ErrorLog.id)
-        )
-        return result.scalar()
+        with self._session_factory.begin() as session:
+            log = ErrorLog(text=text)
+            session.add(log)
+            session.flush()
+            return log.id
 
     def pop_log(self) -> Optional[ErrorLog]:
-        q = sa.select(*ErrorLog.__table__.c).order_by(ErrorLog.id)
-        row = self.session.execute(q).fetchone()
-        if row is None:
-            return None
-        error_log = ErrorLog(**row)
-        self.session.execute(sa.delete(ErrorLog).where(ErrorLog.id == error_log.id))
-        return error_log
-
+        with self._session_factory.begin() as session:
+            q = sa.select(ErrorLog).order_by(ErrorLog.id)
+            log = session.scalars(q).first()
+            if log is not None:
+                session.delete(log)
+            return log

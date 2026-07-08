@@ -13,8 +13,8 @@ class FakeMessage:
         self.from_user = FakeUser(user_id)
 
 
-def test_on_order_status(session):
-    orders = OrdersCRUD(session)
+def test_on_order_status(engine):
+    orders = OrdersCRUD(engine)
     fun = lambda message: on_order_status(orders, [OrderStatus.queued], message)
 
     user_id = orders.create_order(1984)

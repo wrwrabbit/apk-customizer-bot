@@ -5,7 +5,6 @@ name = "pypi"
 
 [packages]
 pytelegrambotapi = "*"
-sqlalchemy = ">=1.4,<2"
 alembic = "*"
 psycopg2-binary = "*"
 python-dotenv = "*"
@@ -21,6 +20,7 @@ countryinfo = "*"
 pycryptodome = "*"
 argon2-cffi = "*"
 numpy = "*"
+sqlalchemy = "<3,>=2.0"
 
 [dev-packages]
 pytest = "*"

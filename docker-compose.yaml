@@ -41,6 +41,7 @@ services:
         SERVICE_NAME: build_worker
     runtime: sysbox-runc
     init: true
+    restart: unless-stopped
     volumes:
       - ${DATA_DIR}:/usr/src/app/${DATA_DIR}
       - build_worker_docker_data:/var/lib/docker

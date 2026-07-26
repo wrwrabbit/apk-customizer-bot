@@ -39,12 +39,12 @@ services:
       context: .
       args:
         SERVICE_NAME: build_worker
+    runtime: sysbox-runc
+    init: true
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
       - ${DATA_DIR}:/usr/src/app/${DATA_DIR}
-    environment:
-      PROJECT_ROOT_ABSPATH_ON_HOST: "${PWD}"
-    command: python -u -m worker.build_worker
+      - build_worker_docker_data:/var/lib/docker
+    command: /bin/sh scripts/start_build_worker.sh
 
   workers_controller:
     build:
@@ -82,3 +82,6 @@ services:
     ports:
       - "127.0.0.1:8081:8081"
       - "127.0.0.1:8082:8082"
+
+volumes:
+  build_worker_docker_data:

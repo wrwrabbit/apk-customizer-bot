@@ -52,7 +52,6 @@ DATABASE_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "password")
 # Build data path
 DATA_DIR = os.environ.get("DATA_DIR", "data")
 TMP_DIR = os.environ.get("TMP_DIR", os.path.join(DATA_DIR, "tmp"))
-PROJECT_ROOT_ABSPATH_ON_HOST = os.environ.get("PROJECT_ROOT_ABSPATH_ON_HOST", None)
 MOCK_BUILD = os.environ.get("MOCK_BUILD", "False").lower() in ("true", "1", "t")
 WORKER_CONTROLLER_HOST = os.environ.get("WORKER_CONTROLLER_HOST", "localhost")
 WORKER_CHECK_INTERVAL_SEC = int(os.environ.get("WORKER_CHECK_INTERVAL_SEC", "1"))

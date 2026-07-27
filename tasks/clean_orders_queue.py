@@ -35,7 +35,7 @@ def delete_finished_orders(orders: OrdersCRUD):
 
 def reset_build_status_for_offline_workers(orders: OrdersCRUD):
     for order in orders.get_orders_by_status(OrderStatus.building):
-        workers = WorkersCRUD(orders.session)
+        workers = WorkersCRUD(orders.engine)
         worker = workers.get_worker(order.worker_id)
         if datetime.now() - worker.last_online_date > timedelta(seconds=config.CONSIDER_WORKER_OFFLINE_AFTER_SEC):
             print(f"Worker {worker.id} is offline for order {order.id}", datetime.now() - worker.last_online_date)

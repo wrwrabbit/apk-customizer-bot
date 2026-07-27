@@ -210,6 +210,14 @@ Generate RSA key for signing app signature:
 openssl genrsa -out worker/private_key.pem
 ```
 
+#### Installing Sysbox
+
+`build_worker` compiles APKs using its own isolated Docker daemon, provided by the
+[Sysbox](https://github.com/nestybox/sysbox) container runtime, instead of mounting the
+host's Docker socket. Install it on the worker host **before** running
+`docker compose up --build -d build_worker` below — follow Sysbox's own
+[install instructions](https://github.com/nestybox/sysbox/blob/master/docs/user-guide/install-package.md).
+
 Run build worker:
 
 ```bash
@@ -235,10 +243,9 @@ docker compose kill -s SIGINT build_worker
 `workers_controller` - web api used by workers.
 
 `build_worker` - looks for prepared tasks and run build script to 
-create an apk. The worker connects to the workers_controller. Uses 
-docker-in-docker to compile apk. Second docker uses socket of host machine, 
-so volume path must start from host machine path, not from current container 
-path.
+create an apk. The worker connects to the workers_controller. Compiles the 
+apk using its own isolated Docker daemon running inside the container via the 
+Sysbox runtime, instead of mounting the host's Docker socket.
 
 `postgres` - database.
 

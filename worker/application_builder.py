@@ -77,11 +77,7 @@ class ApplicationBuilder:
             self.run_script("mock_build.sh", args, cwd=abspath(self.make_order_dir_path()))
         else:
             args = [
-                os.path.join(
-                    config.PROJECT_ROOT_ABSPATH_ON_HOST,
-                    self.make_order_dir_path(),
-                    "Partisan-Telegram-Android"
-                ),
+                os.path.join(abspath(self.make_order_dir_path()), "Partisan-Telegram-Android"),
                 self.build_docker_image_name()
             ]
             self.run_script("build.sh", args, cwd=abspath(self.make_order_dir_path()))

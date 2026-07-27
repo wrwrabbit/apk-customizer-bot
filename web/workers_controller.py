@@ -25,6 +25,9 @@ from crud.orders_crud import OrdersCRUD
 from schemas.order_status import OrderStatus, get_next_status
 from crud.workers_crud import WorkersCRUD
 
+if not config.JWT_SECRET_KEY:
+    raise RuntimeError("JWT_SECRET_KEY environment variable must be set")
+
 app = Flask(__name__)
 
 app.config["JWT_SECRET_KEY"] = config.JWT_SECRET_KEY

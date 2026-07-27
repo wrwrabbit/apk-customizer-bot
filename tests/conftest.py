@@ -1,6 +1,5 @@
 import pytest
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
 
 import config
 from models import Base
@@ -22,18 +21,10 @@ def engine():
         echo=False,
     )
 
-    with e.connect() as s:
-        Base.metadata.create_all(s)
+    Base.metadata.create_all(e)
 
     yield e
 
-    with e.connect() as s:
-        Base.metadata.drop_all(s)
+    Base.metadata.drop_all(e)
 
     e.dispose()
-
-
-@pytest.fixture(scope="function")
-def session(engine):
-    with Session(engine) as s:
-        yield s

@@ -2,8 +2,8 @@ from crud.orders_crud import OrdersCRUD
 from schemas.order_status import OrderStatus
 
 
-def test_create_order(session):
-    orders = OrdersCRUD(session)
+def test_create_order(engine):
+    orders = OrdersCRUD(engine)
     user_id = int(1e12)
     order_id = orders.create_order(user_id)
     orders.update_appname(order_id, "TestApp")

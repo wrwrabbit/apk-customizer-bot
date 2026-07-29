@@ -7,8 +7,8 @@ services:
     environment:
       POSTGRES_DB: test
       PGDATA: /var/lib/postgresql/data/pgdata
-    ports:
-      - "127.0.0.1:5432:5432"
+    networks:
+      - db_net
     logging:
       driver: json-file
       options:
@@ -23,7 +23,10 @@ services:
     command: python -u -m bot.bot
     volumes:
       - ${DATA_DIR}/telegram-bot-api:/var/lib/telegram-bot-api
-      - ${DATA_DIR}:/usr/src/app/${DATA_DIR}
+      - ${TMP_DIR}:/usr/src/app/${TMP_DIR}
+    networks:
+      - default
+      - db_net
 
   clean_orders_queue:
     build:
@@ -31,8 +34,9 @@ services:
       args:
         SERVICE_NAME: clean_orders_queue
     command: python -u -m tasks.clean_orders_queue
-    volumes:
-      - ${DATA_DIR}:/usr/src/app/${DATA_DIR}
+    networks:
+      - default
+      - db_net
 
   build_worker:
     build:
@@ -55,9 +59,12 @@ services:
     command: gunicorn -b 0.0.0.0:8000 web.workers_controller:app
     stop_grace_period: 3m
     volumes:
-      - ${DATA_DIR}:/usr/src/app/${DATA_DIR}
+      - ${TMP_DIR}:/usr/src/app/${TMP_DIR}
     ports:
       - "127.0.0.1:8000:8000"
+    networks:
+      - default
+      - db_net
 
   migrations:
     build:
@@ -65,6 +72,9 @@ services:
       args:
         SERVICE_NAME: migrations
     command: alembic upgrade head
+    networks:
+      - default
+      - db_net
 
   tests:
     build:
@@ -72,6 +82,9 @@ services:
       args:
         SERVICE_NAME: tests
     command: pytest tests/
+    networks:
+      - default
+      - db_net
 
   tg_bot_api:
     image: aiogram/telegram-bot-api:9.6
@@ -86,3 +99,7 @@ services:
 
 volumes:
   build_worker_docker_data:
+
+networks:
+  db_net:
+    internal: true

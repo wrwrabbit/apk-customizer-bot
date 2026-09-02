@@ -9,8 +9,10 @@ fi
 if [ -d "Partisan-Telegram-Android" ]; then
   cd Partisan-Telegram-Android
   git pull || exit 1
+  git submodule sync --recursive || exit 1
+  git submodule update --init --recursive --depth=1 || exit 1
 else
-  git clone -b masking https://github.com/wrwrabbit/Partisan-Telegram-Android.git || exit 1
+  git clone -b masking --recursive --shallow-submodules https://github.com/wrwrabbit/Partisan-Telegram-Android.git || exit 1
   cd Partisan-Telegram-Android
 fi
 

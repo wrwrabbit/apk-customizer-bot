@@ -108,10 +108,19 @@ class ApplicationBuilder:
         order_dir = self.make_order_dir_path()
         sources_dir = os.path.join(order_dir, "Partisan-Telegram-Android")
 
-        shutil.rmtree(os.path.join(sources_dir, ".git"), ignore_errors=False)
+        self.remove_git_metadata(sources_dir)
         os.remove(os.path.join(sources_dir, "TMessagesProj/config/release.keystore"))
 
         shutil.make_archive(os.path.join(order_dir, "sources"), 'zip', sources_dir)
+
+    @staticmethod
+    def remove_git_metadata(sources_dir: str):
+        for root, dirs, files in os.walk(sources_dir):
+            if ".git" in dirs:
+                shutil.rmtree(os.path.join(root, ".git"), ignore_errors=False)
+                dirs.remove(".git")
+            if ".git" in files:
+                os.remove(os.path.join(root, ".git"))
 
     def is_successful_build(self):
         return os.path.isfile(os.path.join(self.make_order_dir_path(), "done")) or self.order.sources_only

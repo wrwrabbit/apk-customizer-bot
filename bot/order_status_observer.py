@@ -18,7 +18,8 @@ from . import build_result_sender
 from .order_generator import OrderGenerator
 from .primary_color import PrimaryColor, primary_colors_with_emoji
 from .stats import increase_build_start_count, increase_queued_count, increase_successful_build_count, \
-    increase_failed_build_count, increase_sources_count, increase_screen_stats, increase_queued_low_priority_count
+    increase_failed_build_count, increase_sources_count, increase_screen_stats, increase_queued_low_priority_count, \
+    build_time_stats, remember_order_worker, increase_worker_build_stats, increase_update_finished_count
 
 from .temporary_info import TemporaryInfo
 from .messages_deleter import MessagesDeleter
@@ -101,11 +102,17 @@ class OrderStatusObserver:
         elif status == OrderStatus.build_started:
             increase_build_start_count()
             increase_screen_stats(order.app_masked_passcode_screen)
+            build_time_stats.on_build_started(order.id)
+            remember_order_worker(order.id, order.worker_id)
             return await self.send_build_started_notification(order, localisation)
         elif status == OrderStatus.built:
+            build_time_stats.on_build_finished(order.id)
+            increase_worker_build_stats(order.id, successful=True)
             return await self.send_apk(order, localisation)
         elif status == OrderStatus.successfully_finished:
             increase_successful_build_count()
+            if order.update_tag is not None:
+                increase_update_finished_count()
             return await self.send_build_finished_successfully_notification(order, localisation)
         elif status == OrderStatus.get_sources_queued:
             increase_sources_count()
@@ -116,6 +123,8 @@ class OrderStatusObserver:
             return await self.send_getting_sources_finished_successfully_notification(order, localisation)
         elif status == OrderStatus.failed:
             increase_failed_build_count()
+            build_time_stats.on_build_discarded(order.id)
+            increase_worker_build_stats(order.id, successful=False)
             return await self.send_failure_notification(order, localisation)
 
     async def send_masked_screen_options(self, order: Order, localisation: Localisation) -> types.Message:

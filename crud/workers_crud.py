@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 import sqlalchemy as sa
@@ -42,3 +42,19 @@ class WorkersCRUD(BaseCRUD):
         q = sa.select(Worker.name)
         with self._session_factory() as session:
             return list(session.scalars(q))
+
+    def get_all_workers(self) -> list[Worker]:
+        q = sa.select(Worker)
+        with self._session_factory() as session:
+            return list(session.scalars(q))
+
+    def get_workers_count(self) -> int:
+        q = sa.select(sa.func.count(Worker.id))
+        with self._session_factory() as session:
+            return session.scalar(q)
+
+    def get_online_workers_count(self, offline_after_sec: int) -> int:
+        cutoff = datetime.now() - timedelta(seconds=offline_after_sec)
+        q = sa.select(sa.func.count(Worker.id)).where(Worker.last_online_date >= cutoff)
+        with self._session_factory() as session:
+            return session.scalar(q)

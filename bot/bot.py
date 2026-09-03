@@ -33,7 +33,9 @@ from bot.order_generator import OrderGenerator
 from bot.order_validator import validate_order, validate_app_id
 from bot.primary_color import PrimaryColor
 from bot.stats import increase_start_count, increase_configuration_start_count, increase_update_start_count, \
-    increase_cancel_count, format_stats, increase_selected_screen_stats
+    increase_cancel_count, format_stats, increase_selected_screen_stats, increase_retried_build_count, \
+    build_time_stats, increase_update_screen_stats, increase_update_cancel_count, increase_update_customize_count, \
+    period_stats, uptime_stats
 from bot.stats_sender import StatsSender
 from crud.user_build_stats_crud import UserBuildStatsCRUD
 from db import engine
@@ -265,6 +267,25 @@ async def send_cancelled_message(message: Union[types.Message, types.CallbackQue
     return await actual_message.answer(text, reply_markup=markup)
 
 
+def format_worker_builds() -> str:
+    worker_ids = set(uptime_stats.worker_successful_builds) | set(uptime_stats.worker_failed_builds)
+    if not worker_ids:
+        return ""
+    worker_names = {worker.id: worker.name for worker in workers.get_all_workers()}
+    total = sum(uptime_stats.worker_successful_builds.values()) + sum(uptime_stats.worker_failed_builds.values())
+    text = f"<u>worker_builds ({total})</u>:"
+    for worker_id in sorted(worker_ids, key=lambda i: worker_names.get(i, f"worker #{i}")):
+        name = worker_names.get(worker_id, f"worker #{worker_id}")
+        successful = uptime_stats.worker_successful_builds.get(worker_id, 0)
+        failed = uptime_stats.worker_failed_builds.get(worker_id, 0)
+        period_successful = period_stats.worker_successful_builds.get(worker_id, 0)
+        period_failed = period_stats.worker_failed_builds.get(worker_id, 0)
+        successful_text = f"{successful}" + (f" (+{period_successful})" if period_successful else "")
+        failed_text = f"{failed}" + (f" (+{period_failed})" if period_failed else "")
+        text += f"\n• {name}: {successful_text} ok, {failed_text} failed"
+    return text
+
+
 async def send_stats(chat_id: int) -> types.Message:
     count_of_users_with_messages = MessagesDeleter.deleter.get_count_of_users_with_messages()
     count_of_orders = orders.get_orders_count()
@@ -273,14 +294,45 @@ async def send_stats(chat_id: int) -> types.Message:
     count_of_orders_update_queue = orders.get_count_of_orders_by_status(OrderStatus.update_queued)
     count_of_orders_building = orders.get_count_of_orders_by_status(STATUSES_BUILDING + STATUSES_GETTING_SOURCES)
     count_of_orders_finished = orders.get_count_of_orders_by_status(STATUSES_FINISHED)
+
+    count_of_workers = workers.get_workers_count()
+    count_of_online_workers = workers.get_online_workers_count(config.CONSIDER_WORKER_OFFLINE_AFTER_SEC)
+
+    oldest_queued_order_date = orders.get_oldest_queued_order_date()
+    if oldest_queued_order_date is None:
+        oldest_queued_text = "Queue: empty"
+    else:
+        oldest_queued_date = oldest_queued_order_date.replace(tzinfo=pytz.utc)
+        oldest_queued_seconds = max((datetime.now(pytz.utc) - oldest_queued_date).total_seconds(), 0)
+        oldest_queued_text = f"Oldest queued: {utils.format_duration(oldest_queued_seconds)}"
+
+    building_order_ids = orders.get_order_ids_by_status(STATUSES_BUILDING)
+    longest_build_seconds = build_time_stats.get_longest_build_seconds(building_order_ids)
+    if longest_build_seconds is None:
+        longest_build_text = "No active builds"
+    else:
+        longest_build_text = f"Longest build: {utils.format_duration(longest_build_seconds)}"
+
     current_stats_text = f"Number of users with messages: {count_of_users_with_messages}\n" + \
-                         f"Number of users with orders: {count_of_orders}\n" + \
+                         f"Number of orders: {count_of_orders}\n" + \
                          f"- Configuring: {count_of_orders_configuring}\n" + \
                          f"- Queue: {count_of_orders_queue}\n" + \
                          f"- Update Queue: {count_of_orders_update_queue}\n" + \
                          f"- Building: {count_of_orders_building}\n" + \
-                         f"- Finished: {count_of_orders_finished}"
-    stats_text = f"<b>Stats</b>:\n{format_stats()}"
+                         f"- Finished: {count_of_orders_finished}\n" + \
+                         f"Workers: {count_of_online_workers} online / {count_of_workers} total\n" + \
+                         f"{oldest_queued_text}\n" + \
+                         f"{longest_build_text}"
+
+    average_build_seconds = build_time_stats.get_average_build_seconds()
+    average_build_text = "n/a" if average_build_seconds is None else utils.format_duration(average_build_seconds)
+    stats_lines = [f"<b>Stats</b>:\n{format_stats()}"]
+    worker_builds_text = format_worker_builds()
+    if worker_builds_text:
+        stats_lines.append(worker_builds_text)
+    stats_lines.append(f"Avg build time: {average_build_text}")
+    stats_text = "\n".join(stats_lines)
+
     text = "\n\n".join([current_stats_text, stats_text])
     return await bot.send_message(chat_id, text)
 
@@ -374,6 +426,8 @@ async def cancel_order(message: types.Message) -> types.Message:
     if order.status in STATUSES_BUILDING:
         return await message.answer(localisation.get_message_text("cannot-cancel"))
     increase_cancel_count()
+    if order.update_tag is not None:
+        increase_update_cancel_count()
     orders.remove_order(order.id)
     result = await send_cancelled_message(message, order)
     await MessagesDeleter.deleter.delete_all_messages(message.chat.id)
@@ -441,6 +495,8 @@ async def create_order_for_app_update_with_file(message: types.Message) -> types
     order_json = json.loads(order_str)
     order = Order.create_order_from_dict(order_json)
 
+    increase_update_screen_stats(order.app_masked_passcode_screen)
+
     remove_previous_order_if_finished(user_id)
     if orders.order_for_user_exists(user_id):
         message_prefix = f"#update-request-failed-{order.update_tag}\n\n"
@@ -470,6 +526,7 @@ async def confirm_order(call: types.CallbackQuery) -> types.Message:
     order = orders.get_user_order(user_id)
     order.status = get_next_status(order, "customize")
     orders.update_order(order)
+    increase_update_customize_count()
     return await status_observer.on_status_changed(order, localisation)
 
 
@@ -704,6 +761,8 @@ async def customize_advanced_masked_passcode_screen(call: types.CallbackQuery) -
     orders.update_order(order)
     orders.update_order_status(order, get_next_status(order))
 
+    increase_selected_screen_stats(masked_screen_name)
+
     return await status_observer.on_status_changed(order, localisation)
 
 
@@ -730,6 +789,8 @@ async def confirm_order(call: types.CallbackQuery) -> types.Message:
         transition_name = "customize"
     else:
         return None
+    if transition_name == "customize" and order.update_tag is not None:
+        increase_update_customize_count()
     order.status = get_next_status(order, transition_name)
     orders.update_order(order)
     return await status_observer.on_status_changed(order, localisation)
@@ -1087,6 +1148,7 @@ async def process_failure(call: types.CallbackQuery) -> types.Message:
         order.record_created = datetime.now().astimezone(pytz.utc)
         order.priority = get_order_priority(user_id)
         orders.update_order(order)
+        increase_retried_build_count()
         return await status_observer.on_status_changed(order, localisation)
     else:
         orders.remove_order(order.id)

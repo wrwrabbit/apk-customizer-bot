@@ -11,6 +11,17 @@ from schemas.android_app_permission import AndroidAppPermission
 from src.localisation.localisation import Localisation
 
 
+def format_duration(seconds: float) -> str:
+    total_seconds = int(seconds)
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m"
+    if minutes:
+        return f"{minutes}m {secs:02d}s"
+    return f"{secs}s"
+
+
 def mask_user_id(user_id, left_digits_count=2):
     symbols = list(str(user_id))
     for i in range(0, len(symbols) - left_digits_count):

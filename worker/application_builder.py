@@ -60,9 +60,14 @@ class ApplicationBuilder:
         args = [
             abspath(self.make_order_dir_path()),
         ]
+        env = os.environ | {
+            "REPO_URL": config.REPO_URL,
+            "REPO_BRANCH": config.REPO_BRANCH,
+            "GITHUB_TOKEN": config.GITHUB_TOKEN,
+        }
         with application_builder_critical_lock: # Wait until the repo is updated before terminating the worker.
             try:
-                self.run_script("copy_repo.sh", args, cwd=abspath(config.DATA_DIR))
+                self.run_script("copy_repo.sh", args, cwd=abspath(config.DATA_DIR), env=env)
             except subprocess.CalledProcessError:
                 repo_path = os.path.join(config.DATA_DIR, "Partisan-Telegram-Android")
                 shutil.rmtree(repo_path, ignore_errors=True)
@@ -85,7 +90,7 @@ class ApplicationBuilder:
     def build_docker_image_name(self) -> str:
         return f"{config.BUILD_DOCKER_IMAGE_NAME}-{self.order.id}"
 
-    def run_script(self, script: str, args: list[str], cwd: str):
+    def run_script(self, script: str, args: list[str], cwd: str, env: Optional[dict] = None):
         subprocess.run(
             [
                 "/bin/sh",
@@ -96,6 +101,7 @@ class ApplicationBuilder:
             capture_output=True,
             cwd=cwd,
             encoding="utf-8",
+            env=env,
         )
 
     def need_mock_error(self) -> bool:

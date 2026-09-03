@@ -59,6 +59,9 @@ WORKER_JWT = os.environ.get("WORKER_JWT", "")
 KEYSTORE_PASSWORD = os.environ.get("KEYSTORE_PASSWORD", "")
 BUILD_DOCKER_IMAGE_NAME = os.environ.get("BUILD_DOCKER_IMAGE_NAME", "masked-partisan-telegram-build")
 ALLOW_BUILD_SOURCES_ONLY = os.environ.get("ALLOW_BUILD_SOURCES_ONLY", "True").lower() in ("true", "1", "t")
+REPO_URL = os.environ.get("REPO_URL", "https://github.com/wrwrabbit/Partisan-Telegram-Android.git")
+REPO_BRANCH = os.environ.get("REPO_BRANCH", "masking")
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 
 # Workers Controller
 JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY")

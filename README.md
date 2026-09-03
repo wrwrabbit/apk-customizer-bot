@@ -200,6 +200,9 @@ WORKER_JWT=CHANGE_ME
 KEYSTORE_PASSWORD=CHANGE_ME
 BUILD_DOCKER_IMAGE_NAME=masked-partisan-telegram-build
 ALLOW_BUILD_SOURCES_ONLY=True
+REPO_URL=https://github.com/wrwrabbit/Partisan-Telegram-Android.git
+REPO_BRANCH=masking
+GITHUB_TOKEN=
 ```
 
 Copy the `cert.pem` from the worker controller to the `worker` dir. 

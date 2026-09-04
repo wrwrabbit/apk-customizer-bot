@@ -30,6 +30,8 @@ ERROR_LOGS_CHAT_ID = int(os.environ.get("ERROR_LOGS_CHAT_ID", str(ADMIN_CHAT_ID)
 STATS_CHAT_ID = int(os.environ.get("STATS_CHAT_ID", str(ADMIN_CHAT_ID)))
 STATS_PERIOD = int(os.environ.get("STATS_PERIOD", "86400"))
 CONSIDER_WORKER_OFFLINE_AFTER_SEC = int(os.environ.get("CONSIDER_WORKER_OFFLINE_AFTER_SEC", "1800"))
+MAX_QUEUE_LENGTH = int(os.environ.get("MAX_QUEUE_LENGTH", "5"))
+CONSIDER_BUILD_STUCK_AFTER_SEC = int(os.environ.get("CONSIDER_BUILD_STUCK_AFTER_SEC", str(5 * 3600)))
 # If not defined, the seed will not depend on the user id.
 SALT_FOR_DERIVATION_RANDOM_SEED_FROM_USER_ID = os.environ.get("SALT_FOR_DERIVATION_RANDOM_SEED_FROM_USER_ID", None)
 USER_ID_HASH_SALT = os.environ.get("USER_ID_HASH_SALT", None)

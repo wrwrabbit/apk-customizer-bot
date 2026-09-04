@@ -240,6 +240,15 @@ class BuildTimeStats:
         now = datetime.now()
         return max((now - start).total_seconds() for start in self._build_start_times.values())
 
+    def get_long_running_builds(self, min_seconds: float) -> list[tuple[int, float]]:
+        now = datetime.now()
+        result = []
+        for order_id, start in self._build_start_times.items():
+            elapsed = (now - start).total_seconds()
+            if elapsed >= min_seconds:
+                result.append((order_id, elapsed))
+        return result
+
     def get_average_build_seconds(self) -> Optional[float]:
         if self.completed_build_count == 0:
             return None

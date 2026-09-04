@@ -28,6 +28,7 @@ from argon2 import PasswordHasher
 
 import config
 import utils
+from bot.danger_observer import DangerObserver
 from bot.error_logs_observer import ErrorLogsObserver
 from bot.order_generator import OrderGenerator
 from bot.order_validator import validate_order, validate_app_id
@@ -74,6 +75,7 @@ user_build_stats_crud = UserBuildStatsCRUD(engine)
 status_observer: Optional[OrderStatusObserver] = None
 error_logs_observer: Optional[ErrorLogsObserver] = None
 stats_sender: Optional[StatsSender] = None
+danger_observer: Optional[DangerObserver] = None
 
 password_hasher = PasswordHasher()
 graceful_shutdown_in_progress = False
@@ -82,10 +84,11 @@ temporary_maintenance = False
 
 async def start():
     logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO, stream=sys.stdout)
-    global status_observer, error_logs_observer, stats_sender
+    global status_observer, error_logs_observer, stats_sender, danger_observer
     status_observer = OrderStatusObserver(bot, orders)
     error_logs_observer = ErrorLogsObserver()
     stats_sender = StatsSender()
+    danger_observer = DangerObserver(orders, workers)
     MessagesDeleter.deleter = MessagesDeleter(bot, orders)
     MessagesDeleter.deleter.add_on_all_messages_deleted_listener(on_all_user_messages_deleted)
     dp.startup.register(on_startup)
@@ -133,6 +136,7 @@ async def on_startup(*args, **kwargs):
     asyncio.create_task(status_observer.observe())
     asyncio.create_task(error_logs_observer.run(send_error))
     asyncio.create_task(stats_sender.run(send_stats))
+    asyncio.create_task(danger_observer.run(send_admin_alert))
     asyncio.create_task(MessagesDeleter.deleter.run())
 
 
@@ -168,6 +172,17 @@ async def send_error(error_text: str):
                                     )
         else:
             traceback.print_exc()
+    except Exception:
+        traceback.print_exc()
+
+
+async def send_admin_alert(alert_text: str):
+    if config.ADMIN_CHAT_ID == 0:
+        return
+    try:
+        logging.warning(alert_text)
+        escaped_text = formatting.Text(alert_text)
+        await bot.send_message(config.ADMIN_CHAT_ID, **escaped_text.as_kwargs())
     except Exception:
         traceback.print_exc()
 

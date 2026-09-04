@@ -153,6 +153,19 @@ def order_failed(worker: Worker):
     return "", 204
 
 
+@app.route("/worker-error", methods=["POST"])
+@jwt_required()
+@log_exceptions
+@check_worker_id
+def worker_error(worker: Worker):
+    json = request.get_json(silent=True)
+    if json is None or "error_text" not in json:
+        return jsonify({"error": "error_text required"}), 400
+    logging.error(f"error reported by the build worker {worker.name}")
+    error_logs.add_log(f"Worker '{worker.name}': {json['error_text']}")
+    return "", 204
+
+
 @app.route("/receive-sources-only-order", methods=["GET"])
 @jwt_required()
 @log_exceptions
@@ -190,6 +203,27 @@ def sources_only_order_completed(worker: Worker):
     file.save(filepath)
     order.status = get_next_status(order)
     orders.update_order(order)
+    return "", 204
+
+
+@app.route("/sources-only-order-failed", methods=["POST"])
+@jwt_required()
+@log_exceptions
+@check_worker_id
+def sources_only_order_failed(worker: Worker):
+    order_id = request.args.get("order-id", None, type=int)
+    if order_id is None:
+        return jsonify({"error": "Order id required"}), 400
+    order = orders.get_order(order_id)
+    if order is None:
+        return jsonify({"error": f"There is no order with id {order_id}"}), 400
+    if order.status != OrderStatus.get_sources_queued or not order.sources_only:
+        return jsonify({"error": f"Order {order_id} is not sources only"}), 400
+    json = request.get_json(silent=True)
+    error_text = json.get("error_text") if isinstance(json, dict) else None
+    logging.error(f"the build worker {worker.name} failed to get sources for the order {order_id}")
+    error_logs.add_log(f"Worker '{worker.name}' failed to get sources for the order #{order_id}."
+                       + (f"\n\n{error_text}" if error_text else ""))
     return "", 204
 
 

@@ -22,7 +22,7 @@ class ApplicationBuilder:
         self.controller_api = controller_api
         self.order = order
 
-    def build(self):
+    def build(self) -> bool:
         try:
             if not self.order.sources_only:
                 logging.info(f"Starting build for order #{self.order.id}")
@@ -36,14 +36,17 @@ class ApplicationBuilder:
             else:
                 self.make_sources_archive()
 
-            if self.is_successful_build():
+            successful = self.is_successful_build()
+            if successful:
                 self.handle_successful_build()
             else:
                 self.handle_failed_build()
             self.remove_order_dir()
+            return successful
         except Exception as e:
             self.handle_failed_build(e)
             self.remove_order_dir()
+            return False
 
     def recreate_order_dir(self):
         order_dir = self.make_order_dir_path()
@@ -141,7 +144,7 @@ class ApplicationBuilder:
 
     def handle_failed_build(self, exception: Optional[Exception] = None):
         if exception is not None:
-            logging.error(f"During build the following exception occurred:", exception)
+            logging.error(f"During build the following exception occurred: {exception}")
         else:
             logging.error(f"The build completed but there is no confirmation of success")
         traceback.print_exc()
@@ -153,7 +156,10 @@ class ApplicationBuilder:
             else:
                 exception_text = f"{type(exception)} {str(exception)}\n\n{traceback.format_exc()}"
             logging.error(f"exception_text {exception_text}")
-            self.controller_api.send_order_failed(exception_text)
+            if not self.order.sources_only:
+                self.controller_api.send_order_failed(exception_text)
+            else:
+                self.controller_api.send_sources_only_order_failed(self.order, exception_text)
         logging.error(f"Build for order #{self.order.id} failed")
 
     def remove_order_dir(self):

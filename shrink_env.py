@@ -12,7 +12,7 @@ variables_per_service = {
                  "CONSIDER_BUILD_STUCK_AFTER_SEC"],
         "build_worker": ["DATA_DIR", "TMP_DIR", "MOCK_BUILD", "WORKER_CONTROLLER_HOST", "WORKER_CHECK_INTERVAL_SEC",
                          "WORKER_JWT", "KEYSTORE_PASSWORD", "BUILD_DOCKER_IMAGE_NAME", "ALLOW_BUILD_SOURCES_ONLY",
-                         "REPO_URL", "REPO_BRANCH", "GITHUB_TOKEN"],
+                         "REPO_URL", "REPO_BRANCH", "GITHUB_TOKEN", "MAX_CONSECUTIVE_BUILD_FAILURES"],
         "clean_orders_queue": ["POSTGRES_USER", "POSTGRES_PASSWORD", "CONSIDER_WORKER_OFFLINE_AFTER_SEC",
                                "DELETE_USER_BUILD_STATS_AFTER_SEC"],
         "workers_controller": ["POSTGRES_USER", "POSTGRES_PASSWORD", "JWT_SECRET_KEY", "TMP_DIR", "USER_ID_HASH_SALT"],

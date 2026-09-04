@@ -10,6 +10,7 @@ from typing import Optional
 import config
 from models import Order
 from worker.application_builder import ApplicationBuilder, application_builder_critical_lock
+from worker.failure_tracker import ConsecutiveFailureTracker
 from worker.worker_controller_api import WorkerControllerApi
 
 global_current_order: Optional[Order] = None
@@ -17,7 +18,9 @@ global_current_sources_only_order: Optional[Order] = None
 global_current_order_lock = threading.Lock()
 
 controller_api = WorkerControllerApi(config.WORKER_CONTROLLER_HOST)
+failure_tracker = ConsecutiveFailureTracker(config.MAX_CONSECUTIVE_BUILD_FAILURES)
 graceful_shutdown = False
+stopped_after_failures = False
 
 
 def signal_handler(sig, frame):
@@ -39,7 +42,8 @@ def process_current_order():
             return
         current_order = global_current_order
 
-    ApplicationBuilder(controller_api, current_order).build()
+    successful = ApplicationBuilder(controller_api, current_order).build()
+    register_build_result(current_order, successful)
 
     with global_current_order_lock:
         global_current_order = None
@@ -58,6 +62,24 @@ def process_current_sources_only_order():
         global_current_sources_only_order = None
 
 
+def register_build_result(order: Order, successful: bool):
+    global stopped_after_failures
+    if not failure_tracker.register_result(successful) or stopped_after_failures:
+        return
+    stopped_after_failures = True
+    failure_count = failure_tracker.failure_count
+    logging.error(f"The worker is stopped after {failure_count} consecutive build failures. "
+                  f"Restart the worker to resume building.")
+    try:
+        controller_api.send_worker_error(
+            f"the worker is stopped after {failure_count} consecutive build failures "
+            f"(the last failed order is #{order.id}). "
+            f"Investigate the problem and restart the worker to resume building.")
+    except Exception as e:
+        logging.error(f"During send_worker_error the following exception occurred: {e}")
+        traceback.print_exc()
+
+
 def main():
     logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO, stream=sys.stdout)
     signal.signal(signal.SIGINT, signal_handler)
@@ -68,6 +90,11 @@ def main():
     try:
         os.makedirs(config.TMP_DIR, exist_ok=True)
         while True:
+            if stopped_after_failures:
+                if graceful_shutdown:
+                    sys.exit(0)
+                time.sleep(config.WORKER_CHECK_INTERVAL_SEC)
+                continue
             controller_api.send_keep_alive()
             with global_current_order_lock:
                 if global_current_order is None:
@@ -82,7 +109,7 @@ def main():
                     thread.start()
             time.sleep(config.WORKER_CHECK_INTERVAL_SEC)
     except Exception as e:
-        logging.error("During main the following exception occurred:", e)
+        logging.error(f"During main the following exception occurred: {e}")
         traceback.print_exc()
 
 

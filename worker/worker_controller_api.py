@@ -94,6 +94,16 @@ class WorkerControllerApi:
         response = self.http_session.post(self.make_url("/order-failed"), json=json)
         self.log_response(f"Order failed:", response)
 
+    def send_worker_error(self, error_text: str):
+        response = self.http_session.post(self.make_url("/worker-error"), json={"error_text": error_text})
+        self.log_response(f"Worker error:", response)
+
+    def send_sources_only_order_failed(self, order: Order, error_text = None):
+        json = {"error_text": error_text} if error_text else None
+        url = self.make_url(f"/sources-only-order-failed?order-id={order.id}")
+        response = self.http_session.post(url, json=json)
+        self.log_response(f"Sources only order failed:", response)
+
     def send_sources_only_order_completed(self, order: Order):
         filepath = os.path.join(
             utils.make_order_building_dir_path(order.id),

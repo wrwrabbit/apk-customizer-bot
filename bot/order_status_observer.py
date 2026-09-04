@@ -24,6 +24,7 @@ from .stats import increase_build_start_count, increase_queued_count, increase_s
 from .temporary_info import TemporaryInfo
 from .messages_deleter import MessagesDeleter
 from .screenshot_maker import ScreenshotMaker
+from .telegram_errors import is_ignorable_telegram_error
 
 
 class OrderStatusObserver:
@@ -48,9 +49,12 @@ class OrderStatusObserver:
                     except TelegramForbiddenError:
                         self.orders.remove_order(order.id)
                     except Exception as e:
+                        if is_ignorable_telegram_error(e):
+                            logging.warning(f"Ignored Telegram error in OrderStatusObserver: {e}")
+                            continue
                         ErrorLogsCRUD(db.engine).add_log(
                             f"During OrderStatusObserver the following exception occurred:\n\n{traceback.format_exc()}")
-                        logging.error("During OrderStatusObserver the following exception occurred:", e)
+                        logging.error(f"During OrderStatusObserver the following exception occurred: {e}")
             await asyncio.sleep(1)
 
     async def on_status_changed(self, order: Optional[Order], localisation: Localisation = None) -> types.Message:

@@ -51,6 +51,7 @@ from src.localisation.localisation import Localisation
 from src.localisation.native_lang_translations import translations
 from .order_status_observer import OrderStatusObserver
 from .messages_deleter import MessagesDeleter
+from .telegram_errors import is_ignorable_telegram_error
 from .temporary_info import add_media_group_token, TemporaryInfo, \
     add_message_with_buttons, get_messages_with_buttons, clear_messages_with_buttons_list
 
@@ -147,6 +148,9 @@ def log_exceptions(fun: Callable):
         try:
             return await fun(message, *args)
         except Exception as e:
+            if is_ignorable_telegram_error(e):
+                logging.warning(f"Ignored Telegram error in '{fun.__name__}': {e}")
+                return
             user_id = message.from_user.id
             order = orders.get_user_order(user_id)
 
@@ -1200,8 +1204,7 @@ async def process_clear_bot(call: types.CallbackQuery) -> types.Message:
     user_id = call.from_user.id
     await call.answer()
     await clear_buttons_from_messages(user_id)
-    await asyncio.gather(MessagesDeleter.deleter.delete_all_messages(message.chat.id),
-                         message.bot.delete_message(message.chat.id, message.message_id))
+    await MessagesDeleter.deleter.delete_all_messages(message.chat.id)
     return None
 
 

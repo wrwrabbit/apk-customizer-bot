@@ -20,8 +20,11 @@ class StatsSender:
 
         while True:
             if (datetime.now() - self.last_send_time).total_seconds() >= config.STATS_PERIOD or self.force_reset:
-                await send_stats(config.STATS_CHAT_ID)
-                clear_period_stats()
+                try:
+                    await send_stats(config.STATS_CHAT_ID)
+                    clear_period_stats()
+                except Exception:
+                    logging.exception("StatsSender failed to send stats")
                 self.last_send_time = datetime.now()
                 self.force_reset = False
             await asyncio.sleep(10)

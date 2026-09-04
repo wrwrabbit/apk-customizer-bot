@@ -208,6 +208,13 @@ def increase_worker_build_stats(order_id: int, successful: bool):
         increase_worker_failed_builds(worker_id)
 
 
+def prune_order_workers(attributable_order_ids: list[int]):
+    attributable_ids = set(attributable_order_ids)
+    for order_id in list(_order_workers.keys()):
+        if order_id not in attributable_ids:
+            _order_workers.pop(order_id, None)
+
+
 class BuildTimeStats:
     def __init__(self):
         self._build_start_times: dict[int, datetime] = {}
@@ -227,14 +234,13 @@ class BuildTimeStats:
     def on_build_discarded(self, order_id: int):
         self._build_start_times.pop(order_id, None)
 
-    def get_longest_build_seconds(self, building_order_ids: list[int]) -> Optional[float]:
+    def prune_build_start_times(self, building_order_ids: list[int]):
         building_ids = set(building_order_ids)
         for order_id in list(self._build_start_times.keys()):
             if order_id not in building_ids:
                 self._build_start_times.pop(order_id, None)
-        for order_id in list(_order_workers.keys()):
-            if order_id not in building_ids:
-                _order_workers.pop(order_id, None)
+
+    def get_longest_build_seconds(self) -> Optional[float]:
         if not self._build_start_times:
             return None
         now = datetime.now()

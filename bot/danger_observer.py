@@ -27,18 +27,26 @@ class DangerObserver:
     async def run(self, send_alert: Callable[[str], Awaitable[Any]]):
         logging.info("Starting DangerObserver")
         while True:
-            try:
-                await self.check(send_alert)
-            except Exception:
-                ErrorLogsCRUD(db.engine).add_log(
-                    f"During DangerObserver the following exception occurred:\n\n{traceback.format_exc()}")
-                logging.exception("During DangerObserver the following exception occurred")
+            await self.check(send_alert)
             await asyncio.sleep(CHECK_PERIOD_SEC)
 
     async def check(self, send_alert: Callable[[str], Awaitable[Any]]):
-        await self.check_queue_length(send_alert)
-        await self.check_online_workers(send_alert)
-        await self.check_long_builds(send_alert)
+        checks = [self.check_queue_length, self.check_online_workers, self.check_long_builds]
+        for check in checks:
+            try:
+                await check(send_alert)
+            except Exception:
+                self.log_exception()
+
+    @staticmethod
+    def log_exception():
+        exception_text = traceback.format_exc()
+        logging.exception("During DangerObserver the following exception occurred")
+        try:
+            ErrorLogsCRUD(db.engine).add_log(
+                f"During DangerObserver the following exception occurred:\n\n{exception_text}")
+        except Exception:
+            logging.exception("DangerObserver failed to save the error log to the database")
 
     async def check_queue_length(self, send_alert: Callable[[str], Awaitable[Any]]):
         queue_length = self.orders.get_count_of_orders_by_status([OrderStatus.queued, OrderStatus.update_queued])
@@ -69,6 +77,7 @@ class DangerObserver:
                 f"The last worker was online {utils.format_duration(offline_duration)} ago.")
 
     async def check_long_builds(self, send_alert: Callable[[str], Awaitable[Any]]):
+        build_time_stats.prune_build_start_times(self.orders.get_order_ids_by_status(STATUSES_BUILDING))
         long_running_builds = build_time_stats.get_long_running_builds(config.CONSIDER_BUILD_STUCK_AFTER_SEC)
         stuck_order_ids = set()
         for order_id, elapsed in long_running_builds:

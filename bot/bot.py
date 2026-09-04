@@ -1,4 +1,5 @@
 import asyncio
+import html
 import io
 import json
 import logging
@@ -36,7 +37,7 @@ from bot.primary_color import PrimaryColor
 from bot.stats import increase_start_count, increase_configuration_start_count, increase_update_start_count, \
     increase_cancel_count, format_stats, increase_selected_screen_stats, increase_retried_build_count, \
     build_time_stats, increase_update_screen_stats, increase_update_cancel_count, increase_update_customize_count, \
-    period_stats, uptime_stats
+    period_stats, uptime_stats, prune_order_workers
 from bot.stats_sender import StatsSender
 from crud.user_build_stats_crud import UserBuildStatsCRUD
 from db import engine
@@ -179,12 +180,9 @@ async def send_error(error_text: str):
 async def send_admin_alert(alert_text: str):
     if config.ADMIN_CHAT_ID == 0:
         return
-    try:
-        logging.warning(alert_text)
-        escaped_text = formatting.Text(alert_text)
-        await bot.send_message(config.ADMIN_CHAT_ID, **escaped_text.as_kwargs())
-    except Exception:
-        traceback.print_exc()
+    logging.warning(alert_text)
+    escaped_text = formatting.Text(alert_text)
+    await bot.send_message(config.ADMIN_CHAT_ID, **escaped_text.as_kwargs())
 
 
 def auto_delete_messages(fun: Callable):
@@ -297,7 +295,7 @@ def format_worker_builds() -> str:
         period_failed = period_stats.worker_failed_builds.get(worker_id, 0)
         successful_text = f"{successful}" + (f" (+{period_successful})" if period_successful else "")
         failed_text = f"{failed}" + (f" (+{period_failed})" if period_failed else "")
-        text += f"\n• {name}: {successful_text} ok, {failed_text} failed"
+        text += f"\n• {html.escape(name)}: {successful_text} ok, {failed_text} failed"
     return text
 
 
@@ -322,7 +320,9 @@ async def send_stats(chat_id: int) -> types.Message:
         oldest_queued_text = f"Oldest queued: {utils.format_duration(oldest_queued_seconds)}"
 
     building_order_ids = orders.get_order_ids_by_status(STATUSES_BUILDING)
-    longest_build_seconds = build_time_stats.get_longest_build_seconds(building_order_ids)
+    build_time_stats.prune_build_start_times(building_order_ids)
+    longest_build_seconds = build_time_stats.get_longest_build_seconds()
+    prune_order_workers(orders.get_order_ids_by_status(STATUSES_BUILDING + [OrderStatus.failed]))
     if longest_build_seconds is None:
         longest_build_text = "No active builds"
     else:

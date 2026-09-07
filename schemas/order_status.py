@@ -32,6 +32,8 @@ class OrderStatus(StrEnum):
     getting_sources_successfully_finished = "getting_sources_successfully_finished"
     failed = "failed"
     failed_notified = "failed_notified"
+    sources_failed = "sources_failed"
+    sources_failed_notified = "sources_failed_notified"
     update_queued = "update_queued"
     update_confirmation = "update_confirmation"
 
@@ -70,6 +72,8 @@ STATUSES_CONFIGURING = [
 STATUSES_FINISHED = [
     OrderStatus.failed,
     OrderStatus.failed_notified,
+    OrderStatus.sources_failed,
+    OrderStatus.sources_failed_notified,
     OrderStatus.successfully_finished,
     OrderStatus.getting_sources_successfully_finished
 ]
@@ -101,11 +105,13 @@ _STATUS_TRANSITIONS: dict[OptionalOrderStatus, StatusTransition] = {
     OrderStatus.sending_apk: {None: OrderStatus.successfully_finished, "repeat": OrderStatus.built, "fail": OrderStatus.failed},
     OrderStatus.successfully_finished: {None: None, "get_sources": OrderStatus.get_sources_queued},
     OrderStatus.get_sources_queued: OrderStatus.sources_downloaded,
-    OrderStatus.sources_downloaded: {"send_result": OrderStatus.sending_sources, "repeat": OrderStatus.sources_downloaded},
-    OrderStatus.sending_sources: OrderStatus.getting_sources_successfully_finished,
+    OrderStatus.sources_downloaded: {"send_result": OrderStatus.sending_sources},
+    OrderStatus.sending_sources: {None: OrderStatus.getting_sources_successfully_finished, "repeat": OrderStatus.sources_downloaded, "fail": OrderStatus.sources_failed},
     OrderStatus.getting_sources_successfully_finished: None,
     OrderStatus.failed: OrderStatus.failed_notified,
     OrderStatus.failed_notified: {"retry": OrderStatus.queued, "cancel": None},
+    OrderStatus.sources_failed: OrderStatus.sources_failed_notified,
+    OrderStatus.sources_failed_notified: {"retry": OrderStatus.get_sources_queued, "cancel": None},
     OrderStatus.update_queued: {None: OrderStatus.build_started, "customize": OrderStatus.app_name},
     OrderStatus.update_confirmation: {"confirm": OrderStatus.queued, "customize": OrderStatus.app_name},
 }

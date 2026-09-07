@@ -19,7 +19,8 @@ from .order_generator import OrderGenerator
 from .primary_color import PrimaryColor, primary_colors_with_emoji
 from .stats import increase_build_start_count, increase_queued_count, increase_successful_build_count, \
     increase_failed_build_count, increase_sources_count, increase_screen_stats, increase_queued_low_priority_count, \
-    build_time_stats, remember_order_worker, increase_worker_build_stats, increase_update_finished_count
+    build_time_stats, remember_order_worker, increase_worker_build_stats, increase_update_finished_count, \
+    increase_failed_sources_count
 
 from .temporary_info import TemporaryInfo
 from .messages_deleter import MessagesDeleter
@@ -38,7 +39,8 @@ class OrderStatusObserver:
             OrderStatus.build_started,
             OrderStatus.built,
             OrderStatus.failed,
-            OrderStatus.sources_downloaded
+            OrderStatus.sources_downloaded,
+            OrderStatus.sources_failed
         ]
         while True:
             for status in statuses_for_observation:
@@ -125,6 +127,9 @@ class OrderStatusObserver:
             return await self.send_sources(order, localisation)
         elif status == OrderStatus.getting_sources_successfully_finished:
             return await self.send_getting_sources_finished_successfully_notification(order, localisation)
+        elif status == OrderStatus.sources_failed:
+            increase_failed_sources_count()
+            return await self.send_sources_failure_notification(order, localisation)
         elif status == OrderStatus.failed:
             increase_failed_build_count()
             build_time_stats.on_build_discarded(order.id)
@@ -456,6 +461,26 @@ class OrderStatusObserver:
             text,
             reply_markup=markup
         )
+
+    async def send_sources_failure_notification(self, order: Order, localisation: Localisation) -> types.Message:
+        markup = types.InlineKeyboardMarkup(inline_keyboard=[[
+            types.InlineKeyboardButton(
+                text=localisation.get_message_text("retry-get-sources"),
+                callback_data='retry_get_sources'
+            ),
+            types.InlineKeyboardButton(
+                text=localisation.get_message_text("cancel-order"),
+                callback_data='cancel_order'
+            )
+        ]])
+
+        response = await self.bot.send_message(
+            order.user_id,
+            localisation.get_message_text("sources-failed"),
+            reply_markup=markup
+        )
+        self.orders.update_order_status(order, get_next_status(order))
+        return response
 
     async def send_failure_notification(self, order: Order, localisation: Localisation) -> types.Message:
         markup = types.InlineKeyboardMarkup(inline_keyboard=[[

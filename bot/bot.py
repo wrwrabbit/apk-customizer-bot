@@ -23,6 +23,7 @@ from aiogram import types
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.client.telegram import TelegramAPIServer
+from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from argon2 import PasswordHasher
@@ -147,6 +148,8 @@ def log_exceptions(fun: Callable):
     async def wrapper(message: Union[types.Message, types.CallbackQuery], *args):
         try:
             return await fun(message, *args)
+        except SkipHandler:
+            raise
         except Exception as e:
             if is_ignorable_telegram_error(e):
                 logging.warning(f"Ignored Telegram error in '{fun.__name__}': {e}")
@@ -1156,6 +1159,9 @@ async def customize_permissions(call: types.CallbackQuery) -> types.Message:
 @log_exceptions
 @auto_delete_messages
 async def process_failure(call: types.CallbackQuery) -> types.Message:
+    if call.data not in ('retry_build', 'cancel_order'):
+        raise SkipHandler()
+
     user_id = call.from_user.id
     localisation = TemporaryInfo.get_localisation(call)
     await call.answer()
@@ -1168,6 +1174,32 @@ async def process_failure(call: types.CallbackQuery) -> types.Message:
         order.priority = get_order_priority(user_id)
         orders.update_order(order)
         increase_retried_build_count()
+        return await status_observer.on_status_changed(order, localisation)
+    else:
+        orders.remove_order(order.id)
+        return await send_cancelled_message(call, order)
+
+
+@dp.callback_query(
+    partial(on_order_status, orders, [OrderStatus.sources_failed_notified])
+)
+@log_exceptions
+@auto_delete_messages
+async def process_sources_failure(call: types.CallbackQuery) -> types.Message:
+    if call.data not in ('retry_get_sources', 'cancel_order'):
+        raise SkipHandler()
+
+    user_id = call.from_user.id
+    localisation = TemporaryInfo.get_localisation(call)
+    await call.answer()
+    await clear_buttons_from_messages(user_id)
+
+    order = orders.get_user_order(user_id)
+    if call.data == 'retry_get_sources':
+        order.status = get_next_status(order, "retry")
+        order.record_created = datetime.now().astimezone(pytz.utc)
+        order.priority = get_order_priority(user_id)
+        orders.update_order(order)
         return await status_observer.on_status_changed(order, localisation)
     else:
         orders.remove_order(order.id)

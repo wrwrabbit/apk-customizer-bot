@@ -18,6 +18,7 @@ def fail_stuck_builds(orders: OrdersCRUD):
         OrderStatus.build_started,
         OrderStatus.building,
         OrderStatus.sending_apk,
+        OrderStatus.sending_sources,
     ]
     for status in stuck_statuses:
         for order in orders.get_orders_by_status(status):

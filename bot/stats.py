@@ -15,6 +15,7 @@ class Stats:
         self.failed_build_count = 0
         self.retried_build_count = 0
         self.sources_count = 0
+        self.failed_sources_count = 0
         self.update_start_count = 0
         self.update_finished_count = 0
         self.update_cancel_count = 0
@@ -143,6 +144,11 @@ def increase_retried_build_count(stats: Stats):
 @do_for_every_stats
 def increase_sources_count(stats: Stats):
     stats.sources_count += 1
+
+
+@do_for_every_stats
+def increase_failed_sources_count(stats: Stats):
+    stats.failed_sources_count += 1
 
 
 @do_for_every_stats

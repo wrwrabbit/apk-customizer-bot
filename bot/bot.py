@@ -335,6 +335,9 @@ async def send_stats(chat_id: int) -> types.Message:
     else:
         longest_build_text = f"Longest build: {utils.format_duration(longest_build_seconds)}"
 
+    average_build_seconds = build_time_stats.get_average_build_seconds()
+    average_build_text = "n/a" if average_build_seconds is None else utils.format_duration(average_build_seconds)
+
     current_stats_text = f"Number of users with messages: {count_of_users_with_messages}\n" + \
                          f"Number of orders: {count_of_orders}\n" + \
                          f"- Configuring: {count_of_orders_configuring}\n" + \
@@ -344,15 +347,13 @@ async def send_stats(chat_id: int) -> types.Message:
                          f"- Finished: {count_of_orders_finished}\n" + \
                          f"Workers: {count_of_online_workers} online / {count_of_workers} total\n" + \
                          f"{oldest_queued_text}\n" + \
-                         f"{longest_build_text}"
+                         f"{longest_build_text}\n" + \
+                         f"Avg build time: {average_build_text}"
 
-    average_build_seconds = build_time_stats.get_average_build_seconds()
-    average_build_text = "n/a" if average_build_seconds is None else utils.format_duration(average_build_seconds)
     stats_lines = [f"<b>Stats</b>:\n{format_stats()}"]
     worker_builds_text = format_worker_builds()
     if worker_builds_text:
         stats_lines.append(worker_builds_text)
-    stats_lines.append(f"Avg build time: {average_build_text}")
     stats_text = "\n".join(stats_lines)
 
     text = "\n\n".join([current_stats_text, stats_text])

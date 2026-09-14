@@ -333,7 +333,7 @@ async def send_stats(chat_id: int) -> types.Message:
     if longest_build_seconds is None:
         longest_build_text = "No active builds"
     else:
-        longest_build_text = f"Longest build: {utils.format_duration(longest_build_seconds)}"
+        longest_build_text = f"Longest running build: {utils.format_duration(longest_build_seconds)}"
 
     average_build_seconds = build_time_stats.get_average_build_seconds()
     average_build_text = "n/a" if average_build_seconds is None else utils.format_duration(average_build_seconds)

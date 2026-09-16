@@ -224,3 +224,15 @@ class OrdersCRUD(BaseCRUD):
                 q = q.where(Order.status == status)
         with self._session_factory() as session:
             return session.scalar(q)
+
+    def get_oldest_queued_order_date(self) -> Optional[datetime]:
+        q = sa.select(sa.func.min(Order.record_created)).where(
+            Order.status.in_([OrderStatus.queued, OrderStatus.update_queued])
+        )
+        with self._session_factory() as session:
+            return session.scalar(q)
+
+    def get_order_ids_by_status(self, status: list) -> list[int]:
+        q = sa.select(Order.id).where(Order.status.in_(status))
+        with self._session_factory() as session:
+            return list(session.scalars(q))

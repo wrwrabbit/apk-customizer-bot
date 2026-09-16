@@ -1,4 +1,5 @@
 import asyncio
+import html
 import io
 import json
 import logging
@@ -22,18 +23,22 @@ from aiogram import types
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.client.telegram import TelegramAPIServer
+from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from argon2 import PasswordHasher
 
 import config
 import utils
+from bot.danger_observer import DangerObserver
 from bot.error_logs_observer import ErrorLogsObserver
 from bot.order_generator import OrderGenerator
 from bot.order_validator import validate_order, validate_app_id
 from bot.primary_color import PrimaryColor
 from bot.stats import increase_start_count, increase_configuration_start_count, increase_update_start_count, \
-    increase_cancel_count, format_stats, increase_selected_screen_stats
+    increase_cancel_count, format_stats, increase_selected_screen_stats, increase_retried_build_count, \
+    build_time_stats, increase_update_screen_stats, increase_update_cancel_count, increase_update_customize_count, \
+    period_stats, uptime_stats, prune_order_workers
 from bot.stats_sender import StatsSender
 from crud.user_build_stats_crud import UserBuildStatsCRUD
 from db import engine
@@ -47,6 +52,7 @@ from src.localisation.localisation import Localisation
 from src.localisation.native_lang_translations import translations
 from .order_status_observer import OrderStatusObserver
 from .messages_deleter import MessagesDeleter
+from .telegram_errors import is_ignorable_telegram_error
 from .temporary_info import add_media_group_token, TemporaryInfo, \
     add_message_with_buttons, get_messages_with_buttons, clear_messages_with_buttons_list
 
@@ -72,6 +78,7 @@ user_build_stats_crud = UserBuildStatsCRUD(engine)
 status_observer: Optional[OrderStatusObserver] = None
 error_logs_observer: Optional[ErrorLogsObserver] = None
 stats_sender: Optional[StatsSender] = None
+danger_observer: Optional[DangerObserver] = None
 
 password_hasher = PasswordHasher()
 graceful_shutdown_in_progress = False
@@ -80,10 +87,11 @@ temporary_maintenance = False
 
 async def start():
     logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO, stream=sys.stdout)
-    global status_observer, error_logs_observer, stats_sender
+    global status_observer, error_logs_observer, stats_sender, danger_observer
     status_observer = OrderStatusObserver(bot, orders)
     error_logs_observer = ErrorLogsObserver()
     stats_sender = StatsSender()
+    danger_observer = DangerObserver(orders, workers)
     MessagesDeleter.deleter = MessagesDeleter(bot, orders)
     MessagesDeleter.deleter.add_on_all_messages_deleted_listener(on_all_user_messages_deleted)
     dp.startup.register(on_startup)
@@ -131,6 +139,7 @@ async def on_startup(*args, **kwargs):
     asyncio.create_task(status_observer.observe())
     asyncio.create_task(error_logs_observer.run(send_error))
     asyncio.create_task(stats_sender.run(send_stats))
+    asyncio.create_task(danger_observer.run(send_admin_alert))
     asyncio.create_task(MessagesDeleter.deleter.run())
 
 
@@ -139,7 +148,12 @@ def log_exceptions(fun: Callable):
     async def wrapper(message: Union[types.Message, types.CallbackQuery], *args):
         try:
             return await fun(message, *args)
+        except SkipHandler:
+            raise
         except Exception as e:
+            if is_ignorable_telegram_error(e):
+                logging.warning(f"Ignored Telegram error in '{fun.__name__}': {e}")
+                return
             user_id = message.from_user.id
             order = orders.get_user_order(user_id)
 
@@ -168,6 +182,14 @@ async def send_error(error_text: str):
             traceback.print_exc()
     except Exception:
         traceback.print_exc()
+
+
+async def send_admin_alert(alert_text: str):
+    if config.ADMIN_CHAT_ID == 0:
+        return
+    logging.warning(alert_text)
+    escaped_text = formatting.Text(alert_text)
+    await bot.send_message(config.ADMIN_CHAT_ID, **escaped_text.as_kwargs())
 
 
 def auto_delete_messages(fun: Callable):
@@ -265,6 +287,25 @@ async def send_cancelled_message(message: Union[types.Message, types.CallbackQue
     return await actual_message.answer(text, reply_markup=markup)
 
 
+def format_worker_builds() -> str:
+    worker_ids = set(uptime_stats.worker_successful_builds) | set(uptime_stats.worker_failed_builds)
+    if not worker_ids:
+        return ""
+    worker_names = {worker.id: worker.name for worker in workers.get_all_workers()}
+    total = sum(uptime_stats.worker_successful_builds.values()) + sum(uptime_stats.worker_failed_builds.values())
+    text = f"<u>worker_builds ({total})</u>:"
+    for worker_id in sorted(worker_ids, key=lambda i: worker_names.get(i, f"worker #{i}")):
+        name = worker_names.get(worker_id, f"worker #{worker_id}")
+        successful = uptime_stats.worker_successful_builds.get(worker_id, 0)
+        failed = uptime_stats.worker_failed_builds.get(worker_id, 0)
+        period_successful = period_stats.worker_successful_builds.get(worker_id, 0)
+        period_failed = period_stats.worker_failed_builds.get(worker_id, 0)
+        successful_text = f"{successful}" + (f" (+{period_successful})" if period_successful else "")
+        failed_text = f"{failed}" + (f" (+{period_failed})" if period_failed else "")
+        text += f"\n• {html.escape(name)}: {successful_text} ok, {failed_text} failed"
+    return text
+
+
 async def send_stats(chat_id: int) -> types.Message:
     count_of_users_with_messages = MessagesDeleter.deleter.get_count_of_users_with_messages()
     count_of_orders = orders.get_orders_count()
@@ -273,14 +314,48 @@ async def send_stats(chat_id: int) -> types.Message:
     count_of_orders_update_queue = orders.get_count_of_orders_by_status(OrderStatus.update_queued)
     count_of_orders_building = orders.get_count_of_orders_by_status(STATUSES_BUILDING + STATUSES_GETTING_SOURCES)
     count_of_orders_finished = orders.get_count_of_orders_by_status(STATUSES_FINISHED)
+
+    count_of_workers = workers.get_workers_count()
+    count_of_online_workers = workers.get_online_workers_count(config.CONSIDER_WORKER_OFFLINE_AFTER_SEC)
+
+    oldest_queued_order_date = orders.get_oldest_queued_order_date()
+    if oldest_queued_order_date is None:
+        oldest_queued_text = "Queue: empty"
+    else:
+        oldest_queued_date = oldest_queued_order_date.replace(tzinfo=pytz.utc)
+        oldest_queued_seconds = max((datetime.now(pytz.utc) - oldest_queued_date).total_seconds(), 0)
+        oldest_queued_text = f"Oldest queued: {utils.format_duration(oldest_queued_seconds)}"
+
+    building_order_ids = orders.get_order_ids_by_status(STATUSES_BUILDING)
+    build_time_stats.prune_build_start_times(building_order_ids)
+    longest_build_seconds = build_time_stats.get_longest_build_seconds()
+    prune_order_workers(orders.get_order_ids_by_status(STATUSES_BUILDING + [OrderStatus.failed]))
+    if longest_build_seconds is None:
+        longest_build_text = "No active builds"
+    else:
+        longest_build_text = f"Longest running build: {utils.format_duration(longest_build_seconds)}"
+
+    average_build_seconds = build_time_stats.get_average_build_seconds()
+    average_build_text = "n/a" if average_build_seconds is None else utils.format_duration(average_build_seconds)
+
     current_stats_text = f"Number of users with messages: {count_of_users_with_messages}\n" + \
-                         f"Number of users with orders: {count_of_orders}\n" + \
+                         f"Number of orders: {count_of_orders}\n" + \
                          f"- Configuring: {count_of_orders_configuring}\n" + \
                          f"- Queue: {count_of_orders_queue}\n" + \
                          f"- Update Queue: {count_of_orders_update_queue}\n" + \
                          f"- Building: {count_of_orders_building}\n" + \
-                         f"- Finished: {count_of_orders_finished}"
-    stats_text = f"<b>Stats</b>:\n{format_stats()}"
+                         f"- Finished: {count_of_orders_finished}\n" + \
+                         f"Workers: {count_of_online_workers} online / {count_of_workers} total\n" + \
+                         f"{oldest_queued_text}\n" + \
+                         f"{longest_build_text}\n" + \
+                         f"Avg build time: {average_build_text}"
+
+    stats_lines = [f"<b>Stats</b>:\n{format_stats()}"]
+    worker_builds_text = format_worker_builds()
+    if worker_builds_text:
+        stats_lines.append(worker_builds_text)
+    stats_text = "\n".join(stats_lines)
+
     text = "\n\n".join([current_stats_text, stats_text])
     return await bot.send_message(chat_id, text)
 
@@ -374,6 +449,8 @@ async def cancel_order(message: types.Message) -> types.Message:
     if order.status in STATUSES_BUILDING:
         return await message.answer(localisation.get_message_text("cannot-cancel"))
     increase_cancel_count()
+    if order.update_tag is not None:
+        increase_update_cancel_count()
     orders.remove_order(order.id)
     result = await send_cancelled_message(message, order)
     await MessagesDeleter.deleter.delete_all_messages(message.chat.id)
@@ -441,6 +518,8 @@ async def create_order_for_app_update_with_file(message: types.Message) -> types
     order_json = json.loads(order_str)
     order = Order.create_order_from_dict(order_json)
 
+    increase_update_screen_stats(order.app_masked_passcode_screen)
+
     remove_previous_order_if_finished(user_id)
     if orders.order_for_user_exists(user_id):
         message_prefix = f"#update-request-failed-{order.update_tag}\n\n"
@@ -470,6 +549,7 @@ async def confirm_order(call: types.CallbackQuery) -> types.Message:
     order = orders.get_user_order(user_id)
     order.status = get_next_status(order, "customize")
     orders.update_order(order)
+    increase_update_customize_count()
     return await status_observer.on_status_changed(order, localisation)
 
 
@@ -704,6 +784,8 @@ async def customize_advanced_masked_passcode_screen(call: types.CallbackQuery) -
     orders.update_order(order)
     orders.update_order_status(order, get_next_status(order))
 
+    increase_selected_screen_stats(masked_screen_name)
+
     return await status_observer.on_status_changed(order, localisation)
 
 
@@ -730,6 +812,8 @@ async def confirm_order(call: types.CallbackQuery) -> types.Message:
         transition_name = "customize"
     else:
         return None
+    if transition_name == "customize" and order.update_tag is not None:
+        increase_update_customize_count()
     order.status = get_next_status(order, transition_name)
     orders.update_order(order)
     return await status_observer.on_status_changed(order, localisation)
@@ -1076,6 +1160,9 @@ async def customize_permissions(call: types.CallbackQuery) -> types.Message:
 @log_exceptions
 @auto_delete_messages
 async def process_failure(call: types.CallbackQuery) -> types.Message:
+    if call.data not in ('retry_build', 'cancel_order'):
+        raise SkipHandler()
+
     user_id = call.from_user.id
     localisation = TemporaryInfo.get_localisation(call)
     await call.answer()
@@ -1083,6 +1170,33 @@ async def process_failure(call: types.CallbackQuery) -> types.Message:
 
     order = orders.get_user_order(user_id)
     if call.data == 'retry_build':
+        order.status = get_next_status(order, "retry")
+        order.record_created = datetime.now().astimezone(pytz.utc)
+        order.priority = get_order_priority(user_id)
+        orders.update_order(order)
+        increase_retried_build_count()
+        return await status_observer.on_status_changed(order, localisation)
+    else:
+        orders.remove_order(order.id)
+        return await send_cancelled_message(call, order)
+
+
+@dp.callback_query(
+    partial(on_order_status, orders, [OrderStatus.sources_failed_notified])
+)
+@log_exceptions
+@auto_delete_messages
+async def process_sources_failure(call: types.CallbackQuery) -> types.Message:
+    if call.data not in ('retry_get_sources', 'cancel_order'):
+        raise SkipHandler()
+
+    user_id = call.from_user.id
+    localisation = TemporaryInfo.get_localisation(call)
+    await call.answer()
+    await clear_buttons_from_messages(user_id)
+
+    order = orders.get_user_order(user_id)
+    if call.data == 'retry_get_sources':
         order.status = get_next_status(order, "retry")
         order.record_created = datetime.now().astimezone(pytz.utc)
         order.priority = get_order_priority(user_id)
@@ -1123,8 +1237,7 @@ async def process_clear_bot(call: types.CallbackQuery) -> types.Message:
     user_id = call.from_user.id
     await call.answer()
     await clear_buttons_from_messages(user_id)
-    await asyncio.gather(MessagesDeleter.deleter.delete_all_messages(message.chat.id),
-                         message.bot.delete_message(message.chat.id, message.message_id))
+    await MessagesDeleter.deleter.delete_all_messages(message.chat.id)
     return None
 
 

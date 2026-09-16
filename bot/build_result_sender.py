@@ -78,9 +78,10 @@ class BuildResultSender:
 
         future = asyncio.create_task(self.bot.send_document(
             order.user_id,
-            document=types.FSInputFile(path=filepath, filename=tg_filename)
+            document=types.FSInputFile(path=filepath, filename=tg_filename),
+            request_timeout=config.APK_SEND_TIMEOUT_SEC,
         ))
-        sending_result = await asyncio.wait((future,), timeout=1800)
+        sending_result = await asyncio.wait((future,), timeout=config.APK_SEND_TIMEOUT_SEC + 60)
         response = next(iter(sending_result[0])).result()
         MessagesDeleter.deleter.add_message(response)
         self.delete_order_dir(order)

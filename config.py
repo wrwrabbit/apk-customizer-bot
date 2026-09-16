@@ -14,6 +14,7 @@ APP_ID_EXAMPLE = "org.some.app"
 APP_NAME_REPLACEMENT_FOR_NOT_NORMALIZED = "app"
 MAX_VERSION_CODE = 1000_000_000
 APK_SEND_MAX_RETRY_COUNT = 5
+APK_SEND_TIMEOUT_SEC = 600
 
 # Telegram
 if os.environ.get("DOCKER"):
@@ -30,6 +31,8 @@ ERROR_LOGS_CHAT_ID = int(os.environ.get("ERROR_LOGS_CHAT_ID", str(ADMIN_CHAT_ID)
 STATS_CHAT_ID = int(os.environ.get("STATS_CHAT_ID", str(ADMIN_CHAT_ID)))
 STATS_PERIOD = int(os.environ.get("STATS_PERIOD", "86400"))
 CONSIDER_WORKER_OFFLINE_AFTER_SEC = int(os.environ.get("CONSIDER_WORKER_OFFLINE_AFTER_SEC", "1800"))
+MAX_QUEUE_LENGTH = int(os.environ.get("MAX_QUEUE_LENGTH", "5"))
+CONSIDER_BUILD_STUCK_AFTER_SEC = int(os.environ.get("CONSIDER_BUILD_STUCK_AFTER_SEC", str(5 * 3600)))
 # If not defined, the seed will not depend on the user id.
 SALT_FOR_DERIVATION_RANDOM_SEED_FROM_USER_ID = os.environ.get("SALT_FOR_DERIVATION_RANDOM_SEED_FROM_USER_ID", None)
 USER_ID_HASH_SALT = os.environ.get("USER_ID_HASH_SALT", None)
@@ -55,10 +58,14 @@ TMP_DIR = os.environ.get("TMP_DIR", os.path.join(DATA_DIR, "tmp"))
 MOCK_BUILD = os.environ.get("MOCK_BUILD", "False").lower() in ("true", "1", "t")
 WORKER_CONTROLLER_HOST = os.environ.get("WORKER_CONTROLLER_HOST", "localhost")
 WORKER_CHECK_INTERVAL_SEC = int(os.environ.get("WORKER_CHECK_INTERVAL_SEC", "1"))
+MAX_CONSECUTIVE_BUILD_FAILURES = int(os.environ.get("MAX_CONSECUTIVE_BUILD_FAILURES", "3"))
 WORKER_JWT = os.environ.get("WORKER_JWT", "")
 KEYSTORE_PASSWORD = os.environ.get("KEYSTORE_PASSWORD", "")
 BUILD_DOCKER_IMAGE_NAME = os.environ.get("BUILD_DOCKER_IMAGE_NAME", "masked-partisan-telegram-build")
 ALLOW_BUILD_SOURCES_ONLY = os.environ.get("ALLOW_BUILD_SOURCES_ONLY", "True").lower() in ("true", "1", "t")
+REPO_URL = os.environ.get("REPO_URL", "https://github.com/wrwrabbit/Partisan-Telegram-Android.git")
+REPO_BRANCH = os.environ.get("REPO_BRANCH", "masking")
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 
 # Workers Controller
 JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY")

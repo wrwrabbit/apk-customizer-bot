@@ -1,8 +1,7 @@
 import asyncio
+import logging
 import traceback
 from typing import Optional, Callable
-
-from aiogram.exceptions import TelegramBadRequest
 
 import config
 import pytz
@@ -18,6 +17,7 @@ from crud.orders_crud import OrdersCRUD
 from db import engine
 from models.message_to_delete import MessageToDelete
 from schemas.order_status import STATUSES_BUILDING, STATUSES_GETTING_SOURCES, STATUSES_FINISHED, OrderStatus
+from .telegram_errors import is_ignorable_telegram_error
 
 
 class MessagesDeleter:
@@ -38,7 +38,8 @@ class MessagesDeleter:
 
     @staticmethod
     def _log_exception_if_needed(exception: Exception):
-        if isinstance(exception, TelegramBadRequest) and "message to delete not found" in exception.message:
+        if is_ignorable_telegram_error(exception):
+            logging.warning(f"Ignored Telegram error in MessagesDeleter: {exception}")
             return
         ErrorLogsCRUD(db.engine).add_log(
             f"During MessagesDeleter the following exception occurred:\n\n{traceback.format_exc()}")

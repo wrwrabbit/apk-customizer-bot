@@ -22,7 +22,7 @@ class ApplicationBuilder:
         self.controller_api = controller_api
         self.order = order
 
-    def build(self):
+    def build(self) -> bool:
         try:
             if not self.order.sources_only:
                 logging.info(f"Starting build for order #{self.order.id}")
@@ -36,14 +36,17 @@ class ApplicationBuilder:
             else:
                 self.make_sources_archive()
 
-            if self.is_successful_build():
+            successful = self.is_successful_build()
+            if successful:
                 self.handle_successful_build()
             else:
                 self.handle_failed_build()
             self.remove_order_dir()
+            return successful
         except Exception as e:
             self.handle_failed_build(e)
             self.remove_order_dir()
+            return False
 
     def recreate_order_dir(self):
         order_dir = self.make_order_dir_path()
@@ -60,9 +63,14 @@ class ApplicationBuilder:
         args = [
             abspath(self.make_order_dir_path()),
         ]
+        env = os.environ | {
+            "REPO_URL": config.REPO_URL,
+            "REPO_BRANCH": config.REPO_BRANCH,
+            "GITHUB_TOKEN": config.GITHUB_TOKEN,
+        }
         with application_builder_critical_lock: # Wait until the repo is updated before terminating the worker.
             try:
-                self.run_script("copy_repo.sh", args, cwd=abspath(config.DATA_DIR))
+                self.run_script("copy_repo.sh", args, cwd=abspath(config.DATA_DIR), env=env)
             except subprocess.CalledProcessError:
                 repo_path = os.path.join(config.DATA_DIR, "Partisan-Telegram-Android")
                 shutil.rmtree(repo_path, ignore_errors=True)
@@ -85,7 +93,7 @@ class ApplicationBuilder:
     def build_docker_image_name(self) -> str:
         return f"{config.BUILD_DOCKER_IMAGE_NAME}-{self.order.id}"
 
-    def run_script(self, script: str, args: list[str], cwd: str):
+    def run_script(self, script: str, args: list[str], cwd: str, env: Optional[dict] = None):
         subprocess.run(
             [
                 "/bin/sh",
@@ -96,6 +104,7 @@ class ApplicationBuilder:
             capture_output=True,
             cwd=cwd,
             encoding="utf-8",
+            env=env,
         )
 
     def need_mock_error(self) -> bool:
@@ -108,10 +117,19 @@ class ApplicationBuilder:
         order_dir = self.make_order_dir_path()
         sources_dir = os.path.join(order_dir, "Partisan-Telegram-Android")
 
-        shutil.rmtree(os.path.join(sources_dir, ".git"), ignore_errors=False)
+        self.remove_git_metadata(sources_dir)
         os.remove(os.path.join(sources_dir, "TMessagesProj/config/release.keystore"))
 
         shutil.make_archive(os.path.join(order_dir, "sources"), 'zip', sources_dir)
+
+    @staticmethod
+    def remove_git_metadata(sources_dir: str):
+        for root, dirs, files in os.walk(sources_dir):
+            if ".git" in dirs:
+                shutil.rmtree(os.path.join(root, ".git"), ignore_errors=False)
+                dirs.remove(".git")
+            if ".git" in files:
+                os.remove(os.path.join(root, ".git"))
 
     def is_successful_build(self):
         return os.path.isfile(os.path.join(self.make_order_dir_path(), "done")) or self.order.sources_only
@@ -126,7 +144,7 @@ class ApplicationBuilder:
 
     def handle_failed_build(self, exception: Optional[Exception] = None):
         if exception is not None:
-            logging.error(f"During build the following exception occurred:", exception)
+            logging.error(f"During build the following exception occurred: {exception}")
         else:
             logging.error(f"The build completed but there is no confirmation of success")
         traceback.print_exc()
@@ -138,7 +156,10 @@ class ApplicationBuilder:
             else:
                 exception_text = f"{type(exception)} {str(exception)}\n\n{traceback.format_exc()}"
             logging.error(f"exception_text {exception_text}")
-            self.controller_api.send_order_failed(exception_text)
+            if not self.order.sources_only:
+                self.controller_api.send_order_failed(exception_text)
+            else:
+                self.controller_api.send_sources_only_order_failed(self.order, exception_text)
         logging.error(f"Build for order #{self.order.id} failed")
 
     def remove_order_dir(self):

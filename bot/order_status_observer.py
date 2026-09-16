@@ -18,11 +18,14 @@ from . import build_result_sender
 from .order_generator import OrderGenerator
 from .primary_color import PrimaryColor, primary_colors_with_emoji
 from .stats import increase_build_start_count, increase_queued_count, increase_successful_build_count, \
-    increase_failed_build_count, increase_sources_count, increase_screen_stats, increase_queued_low_priority_count
+    increase_failed_build_count, increase_sources_count, increase_screen_stats, increase_queued_low_priority_count, \
+    build_time_stats, remember_order_worker, increase_worker_build_stats, increase_update_finished_count, \
+    increase_failed_sources_count
 
 from .temporary_info import TemporaryInfo
 from .messages_deleter import MessagesDeleter
 from .screenshot_maker import ScreenshotMaker
+from .telegram_errors import is_ignorable_telegram_error
 
 
 class OrderStatusObserver:
@@ -36,7 +39,8 @@ class OrderStatusObserver:
             OrderStatus.build_started,
             OrderStatus.built,
             OrderStatus.failed,
-            OrderStatus.sources_downloaded
+            OrderStatus.sources_downloaded,
+            OrderStatus.sources_failed
         ]
         while True:
             for status in statuses_for_observation:
@@ -47,9 +51,12 @@ class OrderStatusObserver:
                     except TelegramForbiddenError:
                         self.orders.remove_order(order.id)
                     except Exception as e:
+                        if is_ignorable_telegram_error(e):
+                            logging.warning(f"Ignored Telegram error in OrderStatusObserver: {e}")
+                            continue
                         ErrorLogsCRUD(db.engine).add_log(
                             f"During OrderStatusObserver the following exception occurred:\n\n{traceback.format_exc()}")
-                        logging.error("During OrderStatusObserver the following exception occurred:", e)
+                        logging.error(f"During OrderStatusObserver the following exception occurred: {e}")
             await asyncio.sleep(1)
 
     async def on_status_changed(self, order: Optional[Order], localisation: Localisation = None) -> types.Message:
@@ -101,11 +108,17 @@ class OrderStatusObserver:
         elif status == OrderStatus.build_started:
             increase_build_start_count()
             increase_screen_stats(order.app_masked_passcode_screen)
+            build_time_stats.on_build_started(order.id)
+            remember_order_worker(order.id, order.worker_id)
             return await self.send_build_started_notification(order, localisation)
         elif status == OrderStatus.built:
+            build_time_stats.on_build_finished(order.id)
+            increase_worker_build_stats(order.id, successful=True)
             return await self.send_apk(order, localisation)
         elif status == OrderStatus.successfully_finished:
             increase_successful_build_count()
+            if order.update_tag is not None:
+                increase_update_finished_count()
             return await self.send_build_finished_successfully_notification(order, localisation)
         elif status == OrderStatus.get_sources_queued:
             increase_sources_count()
@@ -114,8 +127,13 @@ class OrderStatusObserver:
             return await self.send_sources(order, localisation)
         elif status == OrderStatus.getting_sources_successfully_finished:
             return await self.send_getting_sources_finished_successfully_notification(order, localisation)
+        elif status == OrderStatus.sources_failed:
+            increase_failed_sources_count()
+            return await self.send_sources_failure_notification(order, localisation)
         elif status == OrderStatus.failed:
             increase_failed_build_count()
+            build_time_stats.on_build_discarded(order.id)
+            increase_worker_build_stats(order.id, successful=False)
             return await self.send_failure_notification(order, localisation)
 
     async def send_masked_screen_options(self, order: Order, localisation: Localisation) -> types.Message:
@@ -443,6 +461,26 @@ class OrderStatusObserver:
             text,
             reply_markup=markup
         )
+
+    async def send_sources_failure_notification(self, order: Order, localisation: Localisation) -> types.Message:
+        markup = types.InlineKeyboardMarkup(inline_keyboard=[[
+            types.InlineKeyboardButton(
+                text=localisation.get_message_text("retry-get-sources"),
+                callback_data='retry_get_sources'
+            ),
+            types.InlineKeyboardButton(
+                text=localisation.get_message_text("cancel-order"),
+                callback_data='cancel_order'
+            )
+        ]])
+
+        response = await self.bot.send_message(
+            order.user_id,
+            localisation.get_message_text("sources-failed"),
+            reply_markup=markup
+        )
+        self.orders.update_order_status(order, get_next_status(order))
+        return response
 
     async def send_failure_notification(self, order: Order, localisation: Localisation) -> types.Message:
         markup = types.InlineKeyboardMarkup(inline_keyboard=[[

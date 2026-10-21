@@ -42,7 +42,7 @@ def validate_icon(icon_bytes, need_transparency = False) -> bool:
     if not isinstance(icon_bytes, bytes) or len(icon_bytes) > config.FILE_SIZE_LIMIT:
         return False
     try:
-        with Image.open(io.BytesIO(icon_bytes)) as image:
+        with Image.open(io.BytesIO(icon_bytes), formats=["PNG", "JPEG", "WEBP"]) as image:
             if need_transparency and not utils.has_transparency(image):
                 return False
     except:

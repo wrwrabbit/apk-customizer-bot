@@ -981,7 +981,7 @@ async def read_bot_file(file_id: str) -> bytes:
 async def validate_and_resize_icon(order: Order, icon_bytes: bytes, localisation: Localisation) -> Optional[bytes]:
     error_message = None
     try:
-        with Image.open(io.BytesIO(icon_bytes)) as image:
+        with Image.open(io.BytesIO(icon_bytes), formats=["PNG", "JPEG", "WEBP"]) as image:
             has_transparency = utils.has_transparency(image)
             if order.status == OrderStatus.app_notification_icon and not has_transparency:
                 temp_order = Order()

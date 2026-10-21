@@ -245,8 +245,8 @@ class BuildConfigurator:
             'TMessagesProj/src/main/res/drawable-<dpi>/notification.png',
         ]
 
-        with (Image.open(io.BytesIO(self.order.app_icon)) as icon,
-              Image.open(io.BytesIO(self.order.app_notification_icon)) as notification_icon):
+        with (Image.open(io.BytesIO(self.order.app_icon), formats=["PNG", "JPEG", "WEBP"]) as icon,
+              Image.open(io.BytesIO(self.order.app_notification_icon), formats=["PNG", "JPEG", "WEBP"]) as notification_icon):
             for dpi_name, size in dpi_variants.items():
                 logging.info(f"Replacing icon {dpi_name}")
                 icon_copy = icon.resize(size, Resampling.LANCZOS)

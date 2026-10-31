@@ -123,7 +123,7 @@ Add `client_max_body_size` to `/etc/nginx/nginx.conf`:
 ```
 http {
         ...
-        client_max_body_size 200M;
+        client_max_body_size 1000M;
 }
 ```
 

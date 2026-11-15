@@ -35,6 +35,7 @@ class OrderStatus(StrEnum):
     sources_failed = "sources_failed"
     sources_failed_notified = "sources_failed_notified"
     update_queued = "update_queued"
+    update_invalid_fields = "update_invalid_fields"
     update_confirmation = "update_confirmation"
 
 STATUSES_BUILDING = [
@@ -66,6 +67,7 @@ STATUSES_CONFIGURING = [
     OrderStatus.app_notification_icon,
     OrderStatus.app_permissions,
     OrderStatus.confirmation,
+    OrderStatus.update_invalid_fields,
     OrderStatus.update_confirmation,
 ]
 
@@ -113,6 +115,7 @@ _STATUS_TRANSITIONS: dict[OptionalOrderStatus, StatusTransition] = {
     OrderStatus.sources_failed: OrderStatus.sources_failed_notified,
     OrderStatus.sources_failed_notified: {"retry": OrderStatus.get_sources_queued, "cancel": None},
     OrderStatus.update_queued: {None: OrderStatus.build_started, "customize": OrderStatus.app_name},
+    OrderStatus.update_invalid_fields: {"customize": OrderStatus.app_name},
     OrderStatus.update_confirmation: {"confirm": OrderStatus.queued, "customize": OrderStatus.app_name},
 }
 

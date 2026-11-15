@@ -11,15 +11,26 @@ from PIL import Image
 from PIL.Image import Resampling
 
 import config
+from bot.order_validator import get_invalid_worker_fields
 from models import Order
 from schemas.android_app_permission import AndroidAppPermission
 import utils
 from worker.app_signature_signer import extract_and_sign_app_signature
 
 
+class InvalidOrderError(Exception):
+    pass
+
+
 class BuildConfigurator:
     def __init__(self, order: Order):
         self.order = order
+
+    @staticmethod
+    def validate_order(order: Order) -> None:
+        invalid_fields = get_invalid_worker_fields(order)
+        if invalid_fields:
+            raise InvalidOrderError(f"Invalid fields: {', '.join(invalid_fields)}")
 
     @staticmethod
     def configure_build(order: Order) -> None:
@@ -51,32 +62,32 @@ class BuildConfigurator:
         self.update_text_source_file(
             relative_path="TMessagesProj/src/main/assets/strings/overrides.xml",
             src=r'(?<=<string name="AppName">)Telegram(?=</string>)',
-            dst=self.xml_escape(self.order.app_name),
+            dst=self.overrides_escape(self.order.app_name),
         )
         self.update_text_source_file(
             relative_path="TMessagesProj/src/main/assets/strings/overrides.xml",
             src=r'(?<=<string name="AppNameBeta">)Telegram(?=</string>)',
-            dst=self.xml_escape(self.order.app_name),
+            dst=self.overrides_escape(self.order.app_name),
         )
         self.update_text_source_file(
             relative_path="TMessagesProj/src/main/assets/strings/overrides.xml",
             src=r'(?<=<string name="NotificationHiddenName">)Telegram(?=</string>)',
-            dst=self.xml_escape(self.order.app_name),
+            dst=self.overrides_escape(self.order.app_name),
         )
         self.update_text_source_file(
             relative_path="TMessagesProj/src/main/assets/strings/overrides.xml",
             src=r'(?<=<string name="NotificationHiddenChatName">)Telegram(?=</string>)',
-            dst=self.xml_escape(self.order.app_name),
+            dst=self.overrides_escape(self.order.app_name),
         )
         self.update_text_source_file(
             relative_path="TMessagesProj/src/main/assets/strings/overrides.xml",
             src=r'(?<=<string name="SecretChatName">)Telegram(?=</string>)',
-            dst=self.xml_escape(self.order.app_name),
+            dst=self.overrides_escape(self.order.app_name),
         )
         self.update_text_source_file(
             relative_path="TMessagesProj/src/main/assets/strings/overrides.xml",
             src=r'(?<=<string name="NotificationHiddenMessage">)Update Available!(?=</string>)',
-            dst=self.xml_escape(self.order.app_notification_text),
+            dst=self.overrides_escape(self.order.app_notification_text),
         )
 
         self.update_text_source_file(
@@ -207,7 +218,7 @@ class BuildConfigurator:
         for path in paths:
             with open(path, "rt") as file:
                 content = file.read()
-            content = re.sub(src, dst, content)
+            content = re.sub(src, lambda _: dst, content)
             with open(path, "wt") as file:
                 file.write(content)
 
@@ -301,8 +312,17 @@ class BuildConfigurator:
         with open(template_path, "wb") as f:
             f.write(json.dumps(template_dict).encode())
 
-    def xml_escape(self, s: str):
-        escaped = xml.sax.saxutils.escape(s)
-        return (escaped
-                .replace("%", "%%")
-                .replace("'", "\\'"))
+    @staticmethod
+    def overrides_escape(s: str) -> str:
+        return xml.sax.saxutils.escape(s)
+
+    @staticmethod
+    def xml_escape(s: str) -> str:
+        escaped = (xml.sax.saxutils.escape(s)
+                   .replace("\\", "\\\\")
+                   .replace("%", "%%")
+                   .replace("'", "\\'")
+                   .replace('"', '\\"'))
+        if escaped.startswith(("@", "?")):
+            escaped = "\\" + escaped
+        return escaped

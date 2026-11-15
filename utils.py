@@ -101,6 +101,22 @@ def create_permissions_keyboard(order: Order, localisation: Localisation) -> lis
     ])
     return inline_keyboard
 
+VERSION_NAME_PATTERN = re.compile(r'[0-9A-Za-z][0-9A-Za-z .+_-]{0,63}')
+APP_ID_PATTERN = re.compile(r'([A-Za-z][A-Za-z0-9_]*\.)+[A-Za-z][A-Za-z0-9_]*')
+
+
+def is_valid_version_name(value) -> bool:
+    return isinstance(value, str) and VERSION_NAME_PATTERN.fullmatch(value) is not None
+
+
+def is_valid_app_id(value) -> bool:
+    return isinstance(value, str) and len(value) <= 4096 and APP_ID_PATTERN.fullmatch(value) is not None
+
+
+def is_valid_display_text(value) -> bool:
+    return isinstance(value, str) and 0 < len(value) <= 4096 and "\\" not in value
+
+
 def has_transparency(image: Image):
     if image.info.get("transparency", None) is not None:
         return True

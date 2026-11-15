@@ -1,4 +1,5 @@
 import asyncio
+import html
 import logging
 import traceback
 from typing import Optional
@@ -8,6 +9,7 @@ from aiogram.exceptions import TelegramForbiddenError
 
 import db
 import utils
+from bot.order_validator import get_invalid_update_fields
 from crud.error_logs_crud import ErrorLogsCRUD
 from models import Order
 from crud.orders_crud import  OrdersCRUD
@@ -93,6 +95,8 @@ class OrderStatusObserver:
             return await self.send_ask_permissions(order, localisation)
         elif status == OrderStatus.confirmation:
             return await self.send_order_confirmation_request(order, localisation)
+        elif status == OrderStatus.update_invalid_fields:
+            return await self.send_update_invalid_fields(order, localisation)
         elif status == OrderStatus.update_confirmation:
             return await self.send_update_order_confirmation_request(order, localisation)
         elif status == OrderStatus.queued:
@@ -223,9 +227,12 @@ class OrderStatusObserver:
     async def send_ask_app_name(self, order: Order, localisation: Localisation) -> types.Message:
         text = "\n\n".join((
             localisation.get_message_text("ask-for-app-name"),
-            localisation.get_message_text("current-value").format(self.truncate(order.app_name, 1000)),
+            localisation.get_message_text("current-value").format(html.escape(self.truncate(order.app_name, 1000))),
         ))
-        reply_markup = self.create_leave_current_value_and_continue_keyboard_markup(localisation)
+        if utils.is_valid_display_text(order.app_name):
+            reply_markup = self.create_leave_current_value_and_continue_keyboard_markup(localisation)
+        else:
+            reply_markup = None
         return await self.bot.send_message(order.user_id, text, reply_markup=reply_markup)
 
     async def send_app_id_options(self, order: Order, localisation: Localisation) -> types.Message:
@@ -253,7 +260,7 @@ class OrderStatusObserver:
 
         text = "\n\n".join((
             localisation.get_message_text("app-id-about"),
-            localisation.get_message_text("current-value").format(self.truncate(order.app_id, 1000)),
+            localisation.get_message_text("current-value").format(html.escape(self.truncate(order.app_id, 1000))),
         ))
 
         response = await self.bot.send_message(
@@ -278,9 +285,12 @@ class OrderStatusObserver:
     async def send_ask_version_name(self, order: Order, localisation: Localisation) -> types.Message:
         text = "\n\n".join((
             localisation.get_message_text("ask-for-version-name"),
-            localisation.get_message_text("current-value").format(self.truncate(order.app_version_name, 1000)),
+            localisation.get_message_text("current-value").format(html.escape(self.truncate(order.app_version_name, 1000))),
         ))
-        reply_markup = self.create_leave_current_value_and_continue_keyboard_markup(localisation)
+        if utils.is_valid_version_name(order.app_version_name):
+            reply_markup = self.create_leave_current_value_and_continue_keyboard_markup(localisation)
+        else:
+            reply_markup = None
         return await self.bot.send_message(order.user_id, text, reply_markup=reply_markup)
 
     async def send_ask_version_code(self, order: Order, localisation: Localisation) -> types.Message:
@@ -324,9 +334,12 @@ class OrderStatusObserver:
     async def send_ask_notification_text(self, order: Order, localisation: Localisation) -> types.Message:
         text = "\n\n".join((
             localisation.get_message_text("ask-for-notification-text"),
-            localisation.get_message_text("current-value").format(self.truncate(order.app_notification_text, 1000)),
+            localisation.get_message_text("current-value").format(html.escape(self.truncate(order.app_notification_text, 1000))),
         ))
-        reply_markup = self.create_leave_current_value_and_continue_keyboard_markup(localisation)
+        if utils.is_valid_display_text(order.app_notification_text):
+            reply_markup = self.create_leave_current_value_and_continue_keyboard_markup(localisation)
+        else:
+            reply_markup = None
         return await self.bot.send_message(order.user_id, text, reply_markup=reply_markup)
 
     async def send_ask_permissions(self, order: Order, localisation: Localisation) -> types.Message:
@@ -347,6 +360,23 @@ class OrderStatusObserver:
                 self.format_you_may_not_understand_settings(localisation)
             )),
             reply_markup = self.build_request_confirmation_keyboard_markup(localisation),
+        )
+
+    async def send_update_invalid_fields(self, order: Order, localisation: Localisation) -> types.Message:
+        field_names = ", ".join(
+            localisation.get_message_text("field-" + field.replace("_", "-"))
+            for field in get_invalid_update_fields(order)
+        )
+        inline_keyboard = [[
+            types.InlineKeyboardButton(
+                text=localisation.get_message_text("customize-settings"),
+                callback_data="generated_customize"
+            ),
+        ]]
+        return await self.bot.send_message(
+            order.user_id,
+            localisation.get_message_text("invalid-fields-in-update").format(field_names),
+            reply_markup=types.InlineKeyboardMarkup(inline_keyboard=inline_keyboard),
         )
 
     async def send_update_order_confirmation_request(self, order: Order, localisation: Localisation):
@@ -529,11 +559,11 @@ class OrderStatusObserver:
 
         return localisation.get_message_text("current-app-settings").format(
             order.app_masked_passcode_screen,
-            OrderStatusObserver.truncate(order.app_name, 100),
-            OrderStatusObserver.truncate(order.app_id, 100),
-            OrderStatusObserver.truncate(order.app_version_name, 100),
+            html.escape(OrderStatusObserver.truncate(order.app_name, 100)),
+            html.escape(OrderStatusObserver.truncate(order.app_id, 100)),
+            html.escape(OrderStatusObserver.truncate(order.app_version_name, 100)),
             order.app_version_code,
-            OrderStatusObserver.truncate(order.app_notification_text, 100),
+            html.escape(OrderStatusObserver.truncate(order.app_notification_text, 100)),
             OrderStatusObserver.format_permission_list(available_permissions, localisation),
             OrderStatusObserver.format_permission_list(unavailable_permissions, localisation),
             PrimaryColor.get_color_by_value(order.app_notification_color).localize(localisation),

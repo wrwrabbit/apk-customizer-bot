@@ -9,7 +9,7 @@ from typing import Optional
 
 import config
 from models import Order
-from worker.application_builder import ApplicationBuilder, application_builder_critical_lock
+from worker.application_builder import ApplicationBuilder, BuildResult, application_builder_critical_lock
 from worker.failure_tracker import ConsecutiveFailureTracker
 from worker.worker_controller_api import WorkerControllerApi
 
@@ -42,8 +42,9 @@ def process_current_order():
             return
         current_order = global_current_order
 
-    successful = ApplicationBuilder(controller_api, current_order).build()
-    register_build_result(current_order, successful)
+    build_result = ApplicationBuilder(controller_api, current_order).build()
+    if build_result != BuildResult.INVALID_ORDER:
+        register_build_result(current_order, build_result == BuildResult.SUCCESSFUL)
 
     with global_current_order_lock:
         global_current_order = None

@@ -23,7 +23,4 @@ RUN pipenv install --deploy --system --clear --dev
 
 COPY . .
 
-ARG SERVICE_NAME
-RUN python shrink_env.py "$SERVICE_NAME"
-
 CMD python main.py

@@ -11,6 +11,7 @@ import config
 from models import Order
 from worker.application_builder import ApplicationBuilder, BuildResult, application_builder_critical_lock
 from worker.failure_tracker import ConsecutiveFailureTracker
+from worker.mount_health import is_mount_syscall_lost
 from worker.worker_controller_api import WorkerControllerApi
 
 global_current_order: Optional[Order] = None
@@ -81,6 +82,18 @@ def register_build_result(order: Order, successful: bool):
         traceback.print_exc()
 
 
+def handle_mount_syscall_lost():
+    logging.error("Mount syscalls fail with ENOSYS: sysbox-fs lost this container (probably restarted). "
+                  "Exiting so Docker restarts the container.")
+    try:
+        controller_api.send_worker_error(
+            "the worker lost Sysbox mount support (sysbox-fs was probably restarted after the container started); "
+            "the worker exits and its container restarts automatically.")
+    except Exception as e:
+        logging.error(f"During send_worker_error the following exception occurred: {e}")
+        traceback.print_exc()
+
+
 def main():
     logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO, stream=sys.stdout)
     signal.signal(signal.SIGINT, signal_handler)
@@ -101,6 +114,9 @@ def main():
                 if global_current_order is None:
                     if graceful_shutdown: # Shutdown the worker only when current order is None
                         sys.exit(0)
+                    if not config.MOCK_BUILD and is_mount_syscall_lost():
+                        handle_mount_syscall_lost()
+                        sys.exit(1)
                     global_current_order = controller_api.receive_order()
                     thread = threading.Thread(target=process_current_order)
                     thread.start()

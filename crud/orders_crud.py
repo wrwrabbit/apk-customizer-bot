@@ -22,7 +22,7 @@ class OrdersCRUD(BaseCRUD):
             session.flush()
             return order.id
 
-    def insert_configured_order(self, user_id: int, order: Order) -> Order:
+    def insert_configured_order(self, user_id: int, order: Order, status: OrderStatus = OrderStatus.update_queued) -> Order:
         record_created = datetime.now().astimezone(pytz.utc) + timedelta(seconds=config.DELAY_BEFORE_UPDATE_ORDER_BUILD_SEC)
         new_order = Order(
             user_id=user_id,
@@ -42,7 +42,7 @@ class OrdersCRUD(BaseCRUD):
             update_tag=order.update_tag,
             priority=order.priority,
 
-            status=OrderStatus.update_queued,
+            status=status,
         )
         with self._session_factory.begin() as session:
             session.add(new_order)

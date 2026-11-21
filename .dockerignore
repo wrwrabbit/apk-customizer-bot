@@ -7,3 +7,12 @@ data
 README.md
 .git
 .gitignore
+.env
+.env.*
+**/*.pem
+**/*.keystore
+**/*.jks
+**/*.patch
+*.md
+.venv
+.idea

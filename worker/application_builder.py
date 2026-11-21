@@ -4,17 +4,24 @@ import shutil
 import subprocess
 import threading
 import traceback
+from enum import Enum
 from os.path import abspath
 from typing import Optional
 
 import config
 import utils
 from models import Order
-from worker.configure_build import BuildConfigurator
+from worker.configure_build import BuildConfigurator, InvalidOrderError
 from worker.worker_controller_api import WorkerControllerApi
 
 
 application_builder_critical_lock = threading.Lock()
+
+
+class BuildResult(Enum):
+    SUCCESSFUL = "successful"
+    FAILED = "failed"
+    INVALID_ORDER = "invalid_order"
 
 
 class ApplicationBuilder:
@@ -22,7 +29,12 @@ class ApplicationBuilder:
         self.controller_api = controller_api
         self.order = order
 
-    def build(self) -> bool:
+    def build(self) -> BuildResult:
+        try:
+            BuildConfigurator.validate_order(self.order)
+        except InvalidOrderError as e:
+            self.handle_failed_build(e)
+            return BuildResult.INVALID_ORDER
         try:
             if not self.order.sources_only:
                 logging.info(f"Starting build for order #{self.order.id}")
@@ -36,17 +48,18 @@ class ApplicationBuilder:
             else:
                 self.make_sources_archive()
 
-            successful = self.is_successful_build()
-            if successful:
+            if self.is_successful_build():
                 self.handle_successful_build()
+                result = BuildResult.SUCCESSFUL
             else:
                 self.handle_failed_build()
+                result = BuildResult.FAILED
             self.remove_order_dir()
-            return successful
+            return result
         except Exception as e:
             self.handle_failed_build(e)
             self.remove_order_dir()
-            return False
+            return BuildResult.FAILED
 
     def recreate_order_dir(self):
         order_dir = self.make_order_dir_path()

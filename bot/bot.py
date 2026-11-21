@@ -33,7 +33,7 @@ import utils
 from bot.danger_observer import DangerObserver
 from bot.error_logs_observer import ErrorLogsObserver
 from bot.order_generator import OrderGenerator
-from bot.order_validator import validate_order, validate_app_id
+from bot.order_validator import get_invalid_update_fields, are_all_invalid_update_fields_fixable
 from bot.primary_color import PrimaryColor
 from bot.stats import increase_start_count, increase_configuration_start_count, increase_update_start_count, \
     increase_cancel_count, format_stats, increase_selected_screen_stats, increase_retried_build_count, \
@@ -253,9 +253,11 @@ async def validate_update_build_request(message: types.Message) -> bool:
         temp_order = Order.create_order_from_dict(order_json)
         if temp_order.id is not None or not isinstance(temp_order.update_tag, str) or temp_order.sources_only:
             return False
-        if not validate_order(temp_order):
+        if type(temp_order.app_version_code) is not int:
             return False
-        return True
+        temp_order.app_version_code += 1
+        # allow some errors and ask the user to fix them later
+        return are_all_invalid_update_fields_fixable(temp_order)
     except:
         return False
 
@@ -530,7 +532,11 @@ async def create_order_for_app_update_with_file(message: types.Message) -> types
 
     order.app_version_code += 1
     order.priority = get_order_priority(user_id)
-    orders.insert_configured_order(user_id, order)
+    if get_invalid_update_fields(order):
+        status = OrderStatus.update_invalid_fields
+    else:
+        status = OrderStatus.update_queued
+    orders.insert_configured_order(user_id, order, status)
     order = orders.get_user_order(user_id)
     return await status_observer.on_status_changed(order, localisation)
 
@@ -790,7 +796,7 @@ async def customize_advanced_masked_passcode_screen(call: types.CallbackQuery) -
 
 
 @dp.callback_query(
-    partial(on_order_status, orders, [OrderStatus.generated, OrderStatus.confirmation, OrderStatus.update_confirmation])
+    partial(on_order_status, orders, [OrderStatus.generated, OrderStatus.confirmation, OrderStatus.update_invalid_fields, OrderStatus.update_confirmation])
 )
 @log_exceptions
 @auto_delete_messages
@@ -812,7 +818,7 @@ async def confirm_order(call: types.CallbackQuery) -> types.Message:
         transition_name = "customize"
     else:
         return None
-    if transition_name == "customize" and order.update_tag is not None:
+    if transition_name == "customize" and order.update_tag is not None and order.status != OrderStatus.update_invalid_fields:
         increase_update_customize_count()
     order.status = get_next_status(order, transition_name)
     orders.update_order(order)
@@ -820,13 +826,62 @@ async def confirm_order(call: types.CallbackQuery) -> types.Message:
 
 
 @dp.message(
-    partial(on_order_status, orders, [OrderStatus.generated, OrderStatus.confirmation, OrderStatus.update_confirmation])
+    partial(on_order_status, orders, [OrderStatus.generated, OrderStatus.confirmation, OrderStatus.update_invalid_fields, OrderStatus.update_confirmation])
 )
 @log_exceptions
 @auto_delete_messages
 async def handle_confirmation_message(message: types.Message) -> types.Message:
     localisation = TemporaryInfo.get_localisation(message)
     return await message.answer(localisation.get_message_text("request-confirmation-again"))
+
+
+STATUSES_WITH_FIXABLE_CURRENT_VALUE = (
+    OrderStatus.app_name,
+    OrderStatus.app_name_only,
+    OrderStatus.app_version_name,
+    OrderStatus.app_notification_text,
+)
+
+
+def parse_version_code(text) -> Optional[int]:
+    try:
+        version_code = int(text)
+    except (TypeError, ValueError):
+        return None
+    if 0 < version_code <= config.MAX_VERSION_CODE:
+        return version_code
+    return None
+
+
+async def validate_field_value(order: Order, value, message: types.Message, localisation: Localisation) -> Optional[types.Message]:
+    if order.status in (OrderStatus.app_name, OrderStatus.app_name_only, OrderStatus.app_notification_text):
+        if not utils.is_valid_display_text(value):
+            return await message.answer(localisation.get_message_text("invalid-display-text"))
+    elif order.status == OrderStatus.app_id:
+        if not utils.is_valid_app_id(value):
+            return await message.answer(localisation.get_message_text("invalid-app-id").format(config.APP_ID_DOCS_URL))
+    elif order.status == OrderStatus.app_version_name:
+        if not utils.is_valid_version_name(value):
+            return await message.answer(localisation.get_message_text("invalid-version-name"))
+    elif order.status == OrderStatus.app_version_code:
+        version_code = parse_version_code(value)
+        if version_code is None:
+            text = localisation.get_message_text("version-code-must-be-integer").format(config.MAX_VERSION_CODE)
+            return await message.answer(text)
+        if order.update_tag is not None and version_code < order.app_version_code:
+            text = localisation.get_message_text("version-code-must-be-greater-than-previous").format(order.app_version_code - 1)
+            return await message.answer(text)
+    return None
+
+
+def get_current_field_value(order: Order):
+    if order.status in (OrderStatus.app_name, OrderStatus.app_name_only):
+        return order.app_name
+    if order.status == OrderStatus.app_version_name:
+        return order.app_version_name
+    if order.status == OrderStatus.app_notification_text:
+        return order.app_notification_text
+    return None
 
 
 @dp.callback_query(
@@ -842,6 +897,10 @@ async def confirm_order(call: types.CallbackQuery) -> types.Message:
     await clear_buttons_from_messages(user_id)
 
     order = orders.get_user_order(user_id)
+    if order.status in STATUSES_WITH_FIXABLE_CURRENT_VALUE:
+        error_message = await validate_field_value(order, get_current_field_value(order), call.message, localisation)
+        if error_message is not None:
+            return error_message
     orders.update_order_status(order, get_next_status(order))
     return await status_observer.on_status_changed(order, localisation)
 
@@ -855,9 +914,12 @@ async def confirm_order(call: types.CallbackQuery) -> types.Message:
 async def customize_app_name(message: types.Message, lang:str = None) -> types.Message:
     user_id = message.from_user.id
     localisation = TemporaryInfo.get_localisation(message, lang)
+    order = orders.get_user_order(user_id)
+    error_message = await validate_field_value(order, message.text, message, localisation)
+    if error_message is not None:
+        return error_message
     await clear_buttons_from_messages(user_id)
 
-    order = orders.get_user_order(user_id)
     order.app_name = message.text
     if order.status == OrderStatus.app_name_only: # The next step is confirmation. Let's generate a new app id that matches the app name.
         order.app_id = OrderGenerator(order, localisation).random_app_id()
@@ -873,6 +935,8 @@ async def customize_app_name(message: types.Message, lang:str = None) -> types.M
 @log_exceptions
 @auto_delete_messages
 async def confirm_app_id(call: types.CallbackQuery, lang:str = None) -> types.Message:
+    if call.data != 'custom_app_id' and not utils.is_valid_app_id(call.data):
+        raise SkipHandler()
     user_id = call.from_user.id
     localisation = TemporaryInfo.get_localisation(call, lang)
     await call.answer()
@@ -900,10 +964,9 @@ async def customize_app_id(message: types.Message) -> types.Message:
     localisation = TemporaryInfo.get_localisation(message)
 
     order = orders.get_user_order(user_id)
-    if not validate_app_id(message.text):
-        return await message.answer(
-            localisation.get_message_text("invalid-app-id").format(config.APP_ID_DOCS_URL)
-        )
+    error_message = await validate_field_value(order, message.text, message, localisation)
+    if error_message is not None:
+        return error_message
     await clear_buttons_from_messages(user_id)
     app_id = message.text.lower()
     order.app_id = app_id
@@ -924,7 +987,7 @@ async def customize_icon(message: types.Message) -> types.Message:
 
     order = orders.get_user_order(user_id)
 
-    if not validate_icon_message(message):
+    if not await validate_icon_message(message):
         return None
 
     media = message.document if message.document else message.photo[-1] # message.photo contains 3 PhotoSize items for handling different resolutions. The last item corresponds to the highest resolution
@@ -981,7 +1044,7 @@ async def read_bot_file(file_id: str) -> bytes:
 async def validate_and_resize_icon(order: Order, icon_bytes: bytes, localisation: Localisation) -> Optional[bytes]:
     error_message = None
     try:
-        with Image.open(io.BytesIO(icon_bytes)) as image:
+        with Image.open(io.BytesIO(icon_bytes), formats=["PNG", "JPEG", "WEBP"]) as image:
             has_transparency = utils.has_transparency(image)
             if order.status == OrderStatus.app_notification_icon and not has_transparency:
                 temp_order = Order()
@@ -1034,15 +1097,14 @@ async def handle_invalid_icon(message: types.Message) -> types.Message:
 @log_exceptions
 @auto_delete_messages
 async def customize_version_name(message: types.Message) -> types.Message:
-    is_ascii_text = all(ord(c) < 128 for c in message.text)
-    if not is_ascii_text:
-        localisation = TemporaryInfo.get_localisation(message)
-        return await message.answer(localisation.get_message_text("only-ascii-allowed"))
+    localisation = TemporaryInfo.get_localisation(message)
     user_id = message.from_user.id
     order = orders.get_user_order(user_id)
+    error_message = await validate_field_value(order, message.text, message, localisation)
+    if error_message is not None:
+        return error_message
     await clear_buttons_from_messages(user_id)
 
-    localisation = TemporaryInfo.get_localisation(message)
     order.app_version_name = message.text
     orders.update_order(order)
     orders.update_order_status(order, get_next_status(order))
@@ -1060,19 +1122,11 @@ async def customize_version_code(message: types.Message) -> types.Message:
     localisation = TemporaryInfo.get_localisation(message)
 
     order = orders.get_user_order(user_id)
-    try:
-        version_code = int(message.text)
-        if version_code > config.MAX_VERSION_CODE or version_code <= 0:
-            raise ValueError()
-    except ValueError:
-        text = localisation.get_message_text("version-code-must-be-integer").format(config.MAX_VERSION_CODE)
-        return await message.answer(text)
+    error_message = await validate_field_value(order, message.text, message, localisation)
+    if error_message is not None:
+        return error_message
 
-    if order.update_tag is not None and version_code < order.app_version_code:
-        text = localisation.get_message_text("version-code-must-be-greater-than-previous").format(order.app_version_code - 1)
-        return await message.answer(text)
-
-    order.app_version_code = version_code
+    order.app_version_code = parse_version_code(message.text)
 
     await clear_buttons_from_messages(user_id)
     orders.update_order(order)
@@ -1109,9 +1163,12 @@ async def customize_notification_color(call: types.CallbackQuery) -> types.Messa
 async def customize_notification_text(message: types.Message) -> types.Message:
     user_id = message.from_user.id
     localisation = TemporaryInfo.get_localisation(message)
+    order = orders.get_user_order(user_id)
+    error_message = await validate_field_value(order, message.text, message, localisation)
+    if error_message is not None:
+        return error_message
     await clear_buttons_from_messages(user_id)
 
-    order = orders.get_user_order(user_id)
     order.app_notification_text = message.text
     orders.update_order(order)
     orders.update_order_status(order, get_next_status(order))

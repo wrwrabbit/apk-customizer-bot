@@ -85,6 +85,19 @@ with
       - "8000:8000"
 ```
 
+and add the certificate and key mounts to its `volumes:`:
+
+```
+      - type: bind
+        source: ./web/cert.pem
+        target: /usr/src/app/web/cert.pem
+        read_only: true
+      - type: bind
+        source: ./web/key.pem
+        target: /usr/src/app/web/key.pem
+        read_only: true
+```
+
 #### The Right Way
 
 Setup nginx reverse proxy. Put the config to 
@@ -123,7 +136,7 @@ Add `client_max_body_size` to `/etc/nginx/nginx.conf`:
 ```
 http {
         ...
-        client_max_body_size 200M;
+        client_max_body_size 1000M;
 }
 ```
 
@@ -215,6 +228,9 @@ Generate RSA key for signing app signature:
 ```bash
 openssl genrsa -out worker/private_key.pem
 ```
+
+Both `worker/cert.pem` and `worker/private_key.pem` must exist on the worker host: they are
+mounted read-only into `build_worker` at start, not built into the image.
 
 #### Installing Sysbox
 

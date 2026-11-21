@@ -68,7 +68,7 @@ class ScreenshotMaker:
         icon_y = 1208
         icon_size = 156
 
-        with Image.open(io.BytesIO(self.icon_bytes)) as icon:
+        with Image.open(io.BytesIO(self.icon_bytes), formats=["PNG", "JPEG", "WEBP"]) as icon:
             resized_icon: Image.Image = utils.crop_center_square(icon).resize((icon_size, icon_size))
             resized_icon = resized_icon.convert('RGBA')
 
@@ -127,7 +127,7 @@ class ScreenshotMaker:
         )
         self.screen_draw.ellipse(notification_circle_bounds, fill=self.notification_icon_color)
 
-        notification_icon: Image.Image = Image.open(io.BytesIO(self.notification_icon_bytes))
+        notification_icon: Image.Image = Image.open(io.BytesIO(self.notification_icon_bytes), formats=["PNG", "JPEG", "WEBP"])
         notification_icon = utils.crop_center_square(notification_icon)
         notification_icon_size = int(notification_circle_size * math.sin(math.radians(45)))
         notification_icon = notification_icon.resize((notification_icon_size, notification_icon_size))

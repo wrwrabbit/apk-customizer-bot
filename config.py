@@ -7,6 +7,13 @@ if os.path.isfile(".env.postgres"):
     load_dotenv(".env.postgres")
 
 
+def _env(name: str, default=None):
+    value = os.environ.get(name)
+    if value is None or value == "":
+        return default
+    return value
+
+
 NAME_LENGTH_LIMIT = 50
 FILE_SIZE_LIMIT = 5 * 1024 * 1024
 APP_ID_DOCS_URL = "https://developer.android.com/build/configure-app-module#set-application-id"
@@ -17,55 +24,55 @@ APK_SEND_MAX_RETRY_COUNT = 5
 APK_SEND_TIMEOUT_SEC = 600
 
 # Telegram
-if os.environ.get("DOCKER"):
+if _env("DOCKER"):
     TELEGRAM_HOST = "tg_bot_api"
 else:
     TELEGRAM_HOST = "127.0.0.1"
-TOKEN = os.environ.get("TOKEN", "0000000000:asdasdasdasdadsasdadsasd")
-SKIP_UPDATES = os.environ.get("SKIP_UPDATES", "False").lower() in ("true", "1", "t")
-DELETE_MESSAGES_AFTER_SEC = int(os.environ.get("DELETE_MESSAGES_AFTER_SEC", "3600"))
-DELETE_MESSAGES_WITHOUT_ORDERS_AFTER_SEC = int(os.environ.get("DELETE_MESSAGES_WITHOUT_ORDERS_AFTER_SEC", str(DELETE_MESSAGES_AFTER_SEC)))
-DELETE_MESSAGES_WITH_FINISHED_ORDERS_AFTER_SEC = int(os.environ.get("DELETE_MESSAGES_WITH_FINISHED_ORDERS_AFTER_SEC", str(DELETE_MESSAGES_AFTER_SEC)))
-ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
-ERROR_LOGS_CHAT_ID = int(os.environ.get("ERROR_LOGS_CHAT_ID", str(ADMIN_CHAT_ID)))
-STATS_CHAT_ID = int(os.environ.get("STATS_CHAT_ID", str(ADMIN_CHAT_ID)))
-STATS_PERIOD = int(os.environ.get("STATS_PERIOD", "86400"))
-CONSIDER_WORKER_OFFLINE_AFTER_SEC = int(os.environ.get("CONSIDER_WORKER_OFFLINE_AFTER_SEC", "1800"))
-MAX_QUEUE_LENGTH = int(os.environ.get("MAX_QUEUE_LENGTH", "5"))
-CONSIDER_BUILD_STUCK_AFTER_SEC = int(os.environ.get("CONSIDER_BUILD_STUCK_AFTER_SEC", str(5 * 3600)))
+TOKEN = _env("TOKEN", "0000000000:asdasdasdasdadsasdadsasd")
+SKIP_UPDATES = _env("SKIP_UPDATES", "False").lower() in ("true", "1", "t")
+DELETE_MESSAGES_AFTER_SEC = int(_env("DELETE_MESSAGES_AFTER_SEC", "3600"))
+DELETE_MESSAGES_WITHOUT_ORDERS_AFTER_SEC = int(_env("DELETE_MESSAGES_WITHOUT_ORDERS_AFTER_SEC", str(DELETE_MESSAGES_AFTER_SEC)))
+DELETE_MESSAGES_WITH_FINISHED_ORDERS_AFTER_SEC = int(_env("DELETE_MESSAGES_WITH_FINISHED_ORDERS_AFTER_SEC", str(DELETE_MESSAGES_AFTER_SEC)))
+ADMIN_CHAT_ID = int(_env("ADMIN_CHAT_ID", "0"))
+ERROR_LOGS_CHAT_ID = int(_env("ERROR_LOGS_CHAT_ID", str(ADMIN_CHAT_ID)))
+STATS_CHAT_ID = int(_env("STATS_CHAT_ID", str(ADMIN_CHAT_ID)))
+STATS_PERIOD = int(_env("STATS_PERIOD", "86400"))
+CONSIDER_WORKER_OFFLINE_AFTER_SEC = int(_env("CONSIDER_WORKER_OFFLINE_AFTER_SEC", "1800"))
+MAX_QUEUE_LENGTH = int(_env("MAX_QUEUE_LENGTH", "5"))
+CONSIDER_BUILD_STUCK_AFTER_SEC = int(_env("CONSIDER_BUILD_STUCK_AFTER_SEC", str(5 * 3600)))
 # If not defined, the seed will not depend on the user id.
-SALT_FOR_DERIVATION_RANDOM_SEED_FROM_USER_ID = os.environ.get("SALT_FOR_DERIVATION_RANDOM_SEED_FROM_USER_ID", None)
-USER_ID_HASH_SALT = os.environ.get("USER_ID_HASH_SALT", None)
-FAILED_BUILD_COUNT_ALLOWED = int(os.environ.get("FAILED_BUILD_COUNT_ALLOWED", "1"))
-DELETE_USER_BUILD_STATS_AFTER_SEC = int(os.environ.get("DELETE_USER_BUILD_STATS_AFTER_SEC", "1"))
-UPDATES_ALLOWED = os.environ.get("UPDATES_ALLOWED", "True").lower() in ("true", "1", "t")
-SET_BOT_NAME_AND_DESCRIPTION = os.environ.get("SET_BOT_NAME_AND_DESCRIPTION", "True").lower() in ("true", "1", "t")
-DELAY_BEFORE_UPDATE_ORDER_BUILD_SEC = int(os.environ.get("DELAY_BEFORE_UPDATE_ORDER_BUILD_SEC", "60"))
+SALT_FOR_DERIVATION_RANDOM_SEED_FROM_USER_ID = _env("SALT_FOR_DERIVATION_RANDOM_SEED_FROM_USER_ID", None)
+USER_ID_HASH_SALT = _env("USER_ID_HASH_SALT", None)
+FAILED_BUILD_COUNT_ALLOWED = int(_env("FAILED_BUILD_COUNT_ALLOWED", "1"))
+DELETE_USER_BUILD_STATS_AFTER_SEC = int(_env("DELETE_USER_BUILD_STATS_AFTER_SEC", "1"))
+UPDATES_ALLOWED = _env("UPDATES_ALLOWED", "True").lower() in ("true", "1", "t")
+SET_BOT_NAME_AND_DESCRIPTION = _env("SET_BOT_NAME_AND_DESCRIPTION", "True").lower() in ("true", "1", "t")
+DELAY_BEFORE_UPDATE_ORDER_BUILD_SEC = int(_env("DELAY_BEFORE_UPDATE_ORDER_BUILD_SEC", "60"))
 
 # Database
-if os.environ.get("DOCKER"):
+if _env("DOCKER"):
     DATABASE_HOST = "postgres"
 else:
     DATABASE_HOST = "127.0.0.1"
 DATABASE_PORT = 5432
 DATABASE_DB = "postgres"
-DATABASE_USER = os.environ.get("POSTGRES_USER", "user")
-DATABASE_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "password")
+DATABASE_USER = _env("POSTGRES_USER", "user")
+DATABASE_PASSWORD = _env("POSTGRES_PASSWORD", "password")
 
 # Build data path
-DATA_DIR = os.environ.get("DATA_DIR", "data")
-TMP_DIR = os.environ.get("TMP_DIR", os.path.join(DATA_DIR, "tmp"))
-MOCK_BUILD = os.environ.get("MOCK_BUILD", "False").lower() in ("true", "1", "t")
-WORKER_CONTROLLER_HOST = os.environ.get("WORKER_CONTROLLER_HOST", "localhost")
-WORKER_CHECK_INTERVAL_SEC = int(os.environ.get("WORKER_CHECK_INTERVAL_SEC", "1"))
-MAX_CONSECUTIVE_BUILD_FAILURES = int(os.environ.get("MAX_CONSECUTIVE_BUILD_FAILURES", "3"))
-WORKER_JWT = os.environ.get("WORKER_JWT", "")
-KEYSTORE_PASSWORD = os.environ.get("KEYSTORE_PASSWORD", "")
-BUILD_DOCKER_IMAGE_NAME = os.environ.get("BUILD_DOCKER_IMAGE_NAME", "masked-partisan-telegram-build")
-ALLOW_BUILD_SOURCES_ONLY = os.environ.get("ALLOW_BUILD_SOURCES_ONLY", "True").lower() in ("true", "1", "t")
-REPO_URL = os.environ.get("REPO_URL", "https://github.com/wrwrabbit/Partisan-Telegram-Android.git")
-REPO_BRANCH = os.environ.get("REPO_BRANCH", "masking")
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+DATA_DIR = _env("DATA_DIR", "data")
+TMP_DIR = _env("TMP_DIR", os.path.join(DATA_DIR, "tmp"))
+MOCK_BUILD = _env("MOCK_BUILD", "False").lower() in ("true", "1", "t")
+WORKER_CONTROLLER_HOST = _env("WORKER_CONTROLLER_HOST", "localhost")
+WORKER_CHECK_INTERVAL_SEC = int(_env("WORKER_CHECK_INTERVAL_SEC", "1"))
+MAX_CONSECUTIVE_BUILD_FAILURES = int(_env("MAX_CONSECUTIVE_BUILD_FAILURES", "3"))
+WORKER_JWT = _env("WORKER_JWT", "")
+KEYSTORE_PASSWORD = _env("KEYSTORE_PASSWORD", "")
+BUILD_DOCKER_IMAGE_NAME = _env("BUILD_DOCKER_IMAGE_NAME", "masked-partisan-telegram-build")
+ALLOW_BUILD_SOURCES_ONLY = _env("ALLOW_BUILD_SOURCES_ONLY", "True").lower() in ("true", "1", "t")
+REPO_URL = _env("REPO_URL", "https://github.com/wrwrabbit/Partisan-Telegram-Android.git")
+REPO_BRANCH = _env("REPO_BRANCH", "masking")
+GITHUB_TOKEN = _env("GITHUB_TOKEN", "")
 
 # Workers Controller
-JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY")
+JWT_SECRET_KEY = _env("JWT_SECRET_KEY")

@@ -20,9 +20,30 @@ services:
   bot:
     build:
       context: .
-      args:
-        SERVICE_NAME: bot
     command: python -u -m bot.bot
+    env_file: .env.postgres
+    environment:
+      SKIP_UPDATES: ${SKIP_UPDATES:-}
+      DELETE_MESSAGES_AFTER_SEC: ${DELETE_MESSAGES_AFTER_SEC:-}
+      DELETE_MESSAGES_WITHOUT_ORDERS_AFTER_SEC: ${DELETE_MESSAGES_WITHOUT_ORDERS_AFTER_SEC:-}
+      DELETE_MESSAGES_WITH_FINISHED_ORDERS_AFTER_SEC: ${DELETE_MESSAGES_WITH_FINISHED_ORDERS_AFTER_SEC:-}
+      TOKEN: ${TOKEN:-}
+      TMP_DIR: ${TMP_DIR:-}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-}
+      ADMIN_CHAT_ID: ${ADMIN_CHAT_ID:-}
+      ERROR_LOGS_CHAT_ID: ${ERROR_LOGS_CHAT_ID:-}
+      STATS_CHAT_ID: ${STATS_CHAT_ID:-}
+      STATS_PERIOD: ${STATS_PERIOD:-}
+      SALT_FOR_DERIVATION_RANDOM_SEED_FROM_USER_ID: ${SALT_FOR_DERIVATION_RANDOM_SEED_FROM_USER_ID:-}
+      KEYSTORE_PASSWORD: ${KEYSTORE_PASSWORD:-}
+      USER_ID_HASH_SALT: ${USER_ID_HASH_SALT:-}
+      FAILED_BUILD_COUNT_ALLOWED: ${FAILED_BUILD_COUNT_ALLOWED:-}
+      UPDATES_ALLOWED: ${UPDATES_ALLOWED:-}
+      SET_BOT_NAME_AND_DESCRIPTION: ${SET_BOT_NAME_AND_DESCRIPTION:-}
+      DELAY_BEFORE_UPDATE_ORDER_BUILD_SEC: ${DELAY_BEFORE_UPDATE_ORDER_BUILD_SEC:-}
+      CONSIDER_WORKER_OFFLINE_AFTER_SEC: ${CONSIDER_WORKER_OFFLINE_AFTER_SEC:-}
+      MAX_QUEUE_LENGTH: ${MAX_QUEUE_LENGTH:-}
+      CONSIDER_BUILD_STUCK_AFTER_SEC: ${CONSIDER_BUILD_STUCK_AFTER_SEC:-}
     volumes:
       - ${DATA_DIR}/telegram-bot-api:/var/lib/telegram-bot-api
       - ${TMP_DIR}:/usr/src/app/${TMP_DIR}
@@ -34,9 +55,11 @@ services:
   clean_orders_queue:
     build:
       context: .
-      args:
-        SERVICE_NAME: clean_orders_queue
     command: python -u -m tasks.clean_orders_queue
+    env_file: .env.postgres
+    environment:
+      CONSIDER_WORKER_OFFLINE_AFTER_SEC: ${CONSIDER_WORKER_OFFLINE_AFTER_SEC:-}
+      DELETE_USER_BUILD_STATS_AFTER_SEC: ${DELETE_USER_BUILD_STATS_AFTER_SEC:-}
     networks:
       - default
       - db_net
@@ -45,24 +68,47 @@ services:
   build_worker:
     build:
       context: .
-      args:
-        SERVICE_NAME: build_worker
     runtime: sysbox-runc
     init: true
     restart: unless-stopped
+    environment:
+      DATA_DIR: ${DATA_DIR:-}
+      TMP_DIR: ${TMP_DIR:-}
+      MOCK_BUILD: ${MOCK_BUILD:-}
+      WORKER_CONTROLLER_HOST: ${WORKER_CONTROLLER_HOST:-}
+      WORKER_CHECK_INTERVAL_SEC: ${WORKER_CHECK_INTERVAL_SEC:-}
+      WORKER_JWT: ${WORKER_JWT:-}
+      KEYSTORE_PASSWORD: ${KEYSTORE_PASSWORD:-}
+      BUILD_DOCKER_IMAGE_NAME: ${BUILD_DOCKER_IMAGE_NAME:-}
+      ALLOW_BUILD_SOURCES_ONLY: ${ALLOW_BUILD_SOURCES_ONLY:-}
+      REPO_URL: ${REPO_URL:-}
+      REPO_BRANCH: ${REPO_BRANCH:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      MAX_CONSECUTIVE_BUILD_FAILURES: ${MAX_CONSECUTIVE_BUILD_FAILURES:-}
     volumes:
       - ${DATA_DIR}:/usr/src/app/${DATA_DIR}
       - build_worker_docker_data:/var/lib/docker
+      - type: bind
+        source: ./worker/cert.pem
+        target: /usr/src/app/worker/cert.pem
+        read_only: true
+      - type: bind
+        source: ./worker/private_key.pem
+        target: /usr/src/app/worker/private_key.pem
+        read_only: true
     command: /bin/sh scripts/start_build_worker.sh
     logging: *default-logging
 
   workers_controller:
     build:
       context: .
-      args:
-        SERVICE_NAME: workers_controller
     command: gunicorn -b 0.0.0.0:8000 web.workers_controller:app
     stop_grace_period: 3m
+    env_file: .env.postgres
+    environment:
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-}
+      TMP_DIR: ${TMP_DIR:-}
+      USER_ID_HASH_SALT: ${USER_ID_HASH_SALT:-}
     volumes:
       - ${TMP_DIR}:/usr/src/app/${TMP_DIR}
     ports:
@@ -75,9 +121,8 @@ services:
   migrations:
     build:
       context: .
-      args:
-        SERVICE_NAME: migrations
     command: alembic upgrade head
+    env_file: .env.postgres
     networks:
       - default
       - db_net
@@ -85,8 +130,6 @@ services:
   tests:
     build:
       context: .
-      args:
-        SERVICE_NAME: tests
     command: pytest tests/
     networks:
       - default
